@@ -1,9 +1,12 @@
 {
   "manifest_version": 3,
   "name": "Text Direction Fixer",
-  "version": "1.0",
+  "version": "1.1",
   "description": "Click extension icon, then click elements to toggle RTL",
   "permissions": ["activeTab"],
+  "background": {
+    "service_worker": "background.js"
+  },
   "action": {
     "default_title": "Toggle RTL Selection Mode"
   },
