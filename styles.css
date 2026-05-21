@@ -25,7 +25,6 @@
 /* --- Persistent Stats Notification --- */
 .rtl-notification.rtl-persistent {
   pointer-events: auto;
-  position: relative;
   padding-right: 36px;
   max-width: 620px;
 }

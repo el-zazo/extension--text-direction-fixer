@@ -51,8 +51,21 @@ function generateSelectorPath(element) {
 // ===== STORAGE =====
 
 async function loadAllData() {
-  const result = await chrome.storage.local.get("rtl_data");
-  return result.rtl_data || [];
+  try {
+    const result = await chrome.storage.local.get("rtl_data");
+    const raw = result.rtl_data;
+
+    if (!raw) return [];
+    if (Array.isArray(raw)) return raw;
+
+    // Si c'est l'ancien format (Objet), on le convertit en Array
+    if (typeof raw === "object") return Object.values(raw);
+
+    return [];
+  } catch (e) {
+    console.error("[RTL] Error loading data:", e);
+    return [];
+  }
 }
 
 async function saveAllData(data) {
@@ -543,11 +556,31 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 // ===== INITIALIZATION =====
 
+// NOUVEAU CODE À COLLER
 async function init() {
-  await applyAllEnabledSelectors();
-  await showPageLoadStats();
-  await updateBadgeFromStorage();
-  startObserver();
+  try {
+    await applyAllEnabledSelectors();
+  } catch (e) {
+    console.error("[RTL] applyAllEnabledSelectors failed:", e);
+  }
+
+  try {
+    await showPageLoadStats();
+  } catch (e) {
+    console.error("[RTL] showPageLoadStats failed:", e);
+  }
+
+  try {
+    await updateBadgeFromStorage();
+  } catch (e) {
+    console.error("[RTL] updateBadgeFromStorage failed:", e);
+  }
+
+  try {
+    startObserver();
+  } catch (e) {
+    console.error("[RTL] startObserver failed:", e);
+  }
 }
 
 init();
