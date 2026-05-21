@@ -15,253 +15,227 @@
 
 <body>
 
-  <!-- ===== APP SHELL ===== -->
   <div class="app">
 
-    <!-- ===== SIDEBAR ===== -->
-    <aside class="sidebar">
-      <div class="sidebar-header">
-        <div class="logo">
-          <span class="logo-icon">⇄</span>
-          <div class="logo-text">
-            <span class="logo-title">RTL Manager</span>
-            <span class="logo-version">v2.5</span>
-          </div>
-        </div>
-        <button id="themeToggle" class="icon-btn" title="Toggle theme">
-          <svg id="themeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-          </svg>
-        </button>
-      </div>
+    <!-- ===== VIEW: PAGES LIST ===== -->
+    <div class="view active" id="viewPages">
 
-      <nav class="sidebar-nav">
-        <button class="nav-item active" data-view="pages">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-            <polyline points="9 22 9 12 15 12 15 22" />
-          </svg>
-          <span>Pages</span>
-          <span class="nav-badge" id="navPageCount">0</span>
-        </button>
-      </nav>
-
-      <div class="sidebar-footer">
-        <button class="sidebar-action" id="exportBtn">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-            <polyline points="7 10 12 15 17 10" />
-            <line x1="12" y1="15" x2="12" y2="3" />
-          </svg>
-          Export JSON
-        </button>
-        <button class="sidebar-action" id="importBtn">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-            <polyline points="17 8 12 3 7 8" />
-            <line x1="12" y1="3" x2="12" y2="15" />
-          </svg>
-          Import JSON
-        </button>
-        <input type="file" id="importFile" accept=".json" style="display:none">
-        <button class="sidebar-action danger" id="clearAllBtn">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="3 6 5 6 21 6" />
-            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-            <path d="M10 11v6M14 11v6" />
-            <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-          </svg>
-          Clear All Data
-        </button>
-      </div>
-    </aside>
-
-    <!-- ===== MAIN CONTENT ===== -->
-    <main class="main">
-
-      <!-- ===== VIEW: PAGES LIST ===== -->
-      <div class="view active" id="viewPages">
-
-        <div class="view-header">
-          <div class="view-title-group">
-            <h1 class="view-title">Pages</h1>
-            <p class="view-subtitle">All websites with saved RTL selectors</p>
-          </div>
-        </div>
-
-        <!-- Toolbar -->
-        <div class="toolbar">
-          <div class="search-wrap">
-            <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="11" cy="11" r="8" />
-              <line x1="21" y1="21" x2="16.65" y2="16.65" />
-            </svg>
-            <input type="text" id="pageSearch" placeholder="Search pages by URL..." class="search-input">
-            <button class="search-clear" id="pageSearchClear" style="display:none">✕</button>
-          </div>
-          <div class="toolbar-right">
-            <div class="filter-group">
-              <button class="filter-chip active" data-filter="all" data-target="page">All</button>
-              <button class="filter-chip" data-filter="enabled" data-target="page">Active</button>
-              <button class="filter-chip" data-filter="disabled" data-target="page">Inactive</button>
+      <div class="view-header">
+        <div class="view-title-group">
+          <div class="logo">
+            <span class="logo-icon">⇄</span>
+            <div>
+              <h1 class="view-title">RTL Manager</h1>
+              <p class="view-subtitle">All websites with saved RTL selectors</p>
             </div>
-            <select id="pageSortSelect" class="select-input">
-              <option value="az">A → Z</option>
-              <option value="most-selectors">Most Selectors</option>
-              <option value="newest">Newest Page</option>
-              <option value="oldest">Oldest Page</option>
-            </select>
           </div>
         </div>
-
-        <!-- Stats Bar -->
-        <div class="stats-bar" id="pagesStatsBar">
-          <div class="stat-pill">
-            <span class="stat-pill-dot total"></span>
-            <span id="statTotalPages">0</span> pages
-          </div>
-          <div class="stat-pill">
-            <span class="stat-pill-dot enabled"></span>
-            <span id="statEnabledPages">0</span> active
-          </div>
-          <div class="stat-pill">
-            <span class="stat-pill-dot disabled"></span>
-            <span id="statDisabledPages">0</span> inactive
-          </div>
-          <div class="stat-pill">
-            <span class="stat-pill-dot selector"></span>
-            <span id="statTotalSelectors">0</span> total selectors
-          </div>
-        </div>
-
-        <!-- Pages Grid -->
-        <div id="pagesList" class="pages-grid"></div>
-
-        <!-- Empty State -->
-        <div id="pagesEmpty" class="empty-state" style="display:none">
-          <div class="empty-illustration">
-            <svg viewBox="0 0 120 120" fill="none">
-              <circle cx="60" cy="60" r="50" stroke="currentColor" stroke-width="2" stroke-dasharray="6 4"
-                opacity="0.3" />
-              <path d="M40 55 Q60 35 80 55" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"
-                opacity="0.5" />
-              <path d="M45 70 Q60 80 75 70" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"
-                opacity="0.5" />
-              <circle cx="47" cy="50" r="4" fill="currentColor" opacity="0.4" />
-              <circle cx="73" cy="50" r="4" fill="currentColor" opacity="0.4" />
+        <div class="header-actions">
+          <button class="btn btn-ghost btn-sm" id="exportBtn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
             </svg>
-          </div>
-          <h2 class="empty-title">No pages yet</h2>
-          <p class="empty-desc">Use the extension on any webpage to start saving RTL selectors.</p>
-        </div>
-
-      </div>
-
-      <!-- ===== VIEW: SELECTORS LIST ===== -->
-      <div class="view" id="viewSelectors">
-
-        <div class="view-header">
-          <button class="back-btn" id="backBtn">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="15 18 9 12 15 6" />
-            </svg>
-            Pages
+            Export
           </button>
-          <div class="view-title-group">
-            <h1 class="view-title" id="selectorViewTitle">Selectors</h1>
-            <p class="view-subtitle" id="selectorViewUrl"></p>
-          </div>
-          <div class="view-actions">
-            <label class="toggle-wrap" title="Enable/disable all RTL for this page">
-              <input type="checkbox" id="pageToggleMain" class="toggle-input">
-              <span class="toggle-track">
-                <span class="toggle-thumb"></span>
-              </span>
-              <span class="toggle-label">Page Active</span>
-            </label>
-            <button class="btn btn-danger-outline btn-sm" id="deletePageBtn">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-                <polyline points="3 6 5 6 21 6" />
-                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-              </svg>
-              Delete Page
-            </button>
-          </div>
-        </div>
-
-        <!-- Toolbar -->
-        <div class="toolbar">
-          <div class="search-wrap">
-            <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="11" cy="11" r="8" />
-              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+          <button class="btn btn-ghost btn-sm" id="importBtn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="17 8 12 3 7 8" />
+              <line x1="12" y1="3" x2="12" y2="15" />
             </svg>
-            <input type="text" id="selectorSearch" placeholder="Search selectors..." class="search-input">
-            <button class="search-clear" id="selectorSearchClear" style="display:none">✕</button>
-          </div>
-          <div class="toolbar-right">
-            <div class="filter-group">
-              <button class="filter-chip active" data-filter="all" data-target="selector">All</button>
-              <button class="filter-chip" data-filter="enabled" data-target="selector">Active</button>
-              <button class="filter-chip" data-filter="disabled" data-target="selector">Inactive</button>
-            </div>
-            <select id="selectorSortSelect" class="select-input">
-              <option value="newest">Newest First</option>
-              <option value="oldest">Oldest First</option>
-              <option value="az">A → Z</option>
-            </select>
-          </div>
-        </div>
-
-        <!-- Stats Bar -->
-        <div class="stats-bar">
-          <div class="stat-pill">
-            <span class="stat-pill-dot total"></span>
-            <span id="statSelectorTotal">0</span> total
-          </div>
-          <div class="stat-pill">
-            <span class="stat-pill-dot enabled"></span>
-            <span id="statSelectorEnabled">0</span> active
-          </div>
-          <div class="stat-pill">
-            <span class="stat-pill-dot disabled"></span>
-            <span id="statSelectorDisabled">0</span> inactive
-          </div>
-        </div>
-
-        <!-- Selectors Table -->
-        <div class="table-wrap">
-          <table class="selectors-table" id="selectorsTable">
-            <thead>
-              <tr>
-                <th class="col-status">Status</th>
-                <th class="col-path">Selector Path</th>
-                <th class="col-date">Saved</th>
-                <th class="col-actions">Actions</th>
-              </tr>
-            </thead>
-            <tbody id="selectorsTbody"></tbody>
-          </table>
-        </div>
-
-        <!-- Empty State -->
-        <div id="selectorsEmpty" class="empty-state" style="display:none">
-          <div class="empty-illustration">
-            <svg viewBox="0 0 120 120" fill="none">
-              <rect x="25" y="30" width="70" height="60" rx="6" stroke="currentColor" stroke-width="2" opacity="0.3" />
-              <line x1="40" y1="50" x2="80" y2="50" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                opacity="0.5" />
-              <line x1="40" y1="63" x2="65" y2="63" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                opacity="0.5" />
+            Import
+          </button>
+          <input type="file" id="importFile" accept=".json" style="display:none">
+          <button class="btn btn-danger-outline btn-sm" id="clearAllBtn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+              <polyline points="3 6 5 6 21 6" />
+              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+              <path d="M10 11v6M14 11v6" />
             </svg>
-          </div>
-          <h2 class="empty-title">No selectors found</h2>
-          <p class="empty-desc">No selectors match your current search or filter.</p>
+            Clear All
+          </button>
+          <button id="themeToggle" class="icon-btn" title="Toggle theme">
+            <svg id="themeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+            </svg>
+          </button>
         </div>
-
       </div>
 
-    </main>
+      <!-- Toolbar -->
+      <div class="toolbar">
+        <div class="search-wrap">
+          <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
+          <input type="text" id="pageSearch" placeholder="Search pages by URL..." class="search-input">
+          <button class="search-clear" id="pageSearchClear" style="display:none">✕</button>
+        </div>
+        <div class="toolbar-right">
+          <div class="filter-group">
+            <button class="filter-chip active" data-filter="all" data-target="page">All</button>
+            <button class="filter-chip" data-filter="enabled" data-target="page">Active</button>
+            <button class="filter-chip" data-filter="disabled" data-target="page">Inactive</button>
+          </div>
+          <select id="pageSortSelect" class="select-input">
+            <option value="az">A → Z</option>
+            <option value="most-selectors">Most Selectors</option>
+            <option value="newest">Newest</option>
+            <option value="oldest">Oldest</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Stats Bar -->
+      <div class="stats-bar">
+        <div class="stat-pill">
+          <span class="stat-pill-dot total"></span>
+          <span id="statTotalPages">0</span> pages
+        </div>
+        <div class="stat-pill">
+          <span class="stat-pill-dot enabled"></span>
+          <span id="statEnabledPages">0</span> active
+        </div>
+        <div class="stat-pill">
+          <span class="stat-pill-dot disabled"></span>
+          <span id="statDisabledPages">0</span> inactive
+        </div>
+        <div class="stat-pill">
+          <span class="stat-pill-dot selector"></span>
+          <span id="statTotalSelectors">0</span> selectors total
+        </div>
+      </div>
+
+      <!-- Pages Grid -->
+      <div id="pagesList" class="pages-grid"></div>
+
+      <!-- Empty State -->
+      <div id="pagesEmpty" class="empty-state" style="display:none">
+        <div class="empty-illustration">
+          <svg viewBox="0 0 120 120" fill="none">
+            <circle cx="60" cy="60" r="50" stroke="currentColor" stroke-width="2" stroke-dasharray="6 4"
+              opacity="0.3" />
+            <path d="M40 55 Q60 35 80 55" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"
+              opacity="0.5" />
+            <path d="M45 70 Q60 80 75 70" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"
+              opacity="0.5" />
+            <circle cx="47" cy="50" r="4" fill="currentColor" opacity="0.4" />
+            <circle cx="73" cy="50" r="4" fill="currentColor" opacity="0.4" />
+          </svg>
+        </div>
+        <h2 class="empty-title">No pages yet</h2>
+        <p class="empty-desc">Use the extension on any webpage to start saving RTL selectors.</p>
+      </div>
+
+    </div>
+
+    <!-- ===== VIEW: SELECTORS LIST ===== -->
+    <div class="view" id="viewSelectors">
+
+      <div class="view-header">
+        <button class="back-btn" id="backBtn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="15 18 9 12 15 6" />
+          </svg>
+          Pages
+        </button>
+        <div class="view-title-group">
+          <h1 class="view-title" id="selectorViewTitle">Selectors</h1>
+          <p class="view-subtitle" id="selectorViewUrl"></p>
+        </div>
+        <div class="header-actions">
+          <label class="toggle-wrap" title="Enable/disable all RTL for this page">
+            <input type="checkbox" id="pageToggleMain" class="toggle-input">
+            <span class="toggle-track">
+              <span class="toggle-thumb"></span>
+            </span>
+            <span class="toggle-label">Page Active</span>
+          </label>
+          <button class="btn btn-danger-outline btn-sm" id="deletePageBtn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+              <polyline points="3 6 5 6 21 6" />
+              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+            </svg>
+            Delete Page
+          </button>
+        </div>
+      </div>
+
+      <!-- Toolbar -->
+      <div class="toolbar">
+        <div class="search-wrap">
+          <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
+          <input type="text" id="selectorSearch" placeholder="Search selectors..." class="search-input">
+          <button class="search-clear" id="selectorSearchClear" style="display:none">✕</button>
+        </div>
+        <div class="toolbar-right">
+          <div class="filter-group">
+            <button class="filter-chip active" data-filter="all" data-target="selector">All</button>
+            <button class="filter-chip" data-filter="enabled" data-target="selector">Active</button>
+            <button class="filter-chip" data-filter="disabled" data-target="selector">Inactive</button>
+          </div>
+          <select id="selectorSortSelect" class="select-input">
+            <option value="newest">Newest First</option>
+            <option value="oldest">Oldest First</option>
+            <option value="az">A → Z</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Stats Bar -->
+      <div class="stats-bar">
+        <div class="stat-pill">
+          <span class="stat-pill-dot total"></span>
+          <span id="statSelectorTotal">0</span> total
+        </div>
+        <div class="stat-pill">
+          <span class="stat-pill-dot enabled"></span>
+          <span id="statSelectorEnabled">0</span> active
+        </div>
+        <div class="stat-pill">
+          <span class="stat-pill-dot disabled"></span>
+          <span id="statSelectorDisabled">0</span> inactive
+        </div>
+      </div>
+
+      <!-- Selectors Table -->
+      <div class="table-wrap" id="selectorsTableWrap">
+        <table class="selectors-table">
+          <thead>
+            <tr>
+              <th class="col-status">Status</th>
+              <th class="col-path">Selector Path</th>
+              <th class="col-date">Saved</th>
+              <th class="col-actions">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="selectorsTbody"></tbody>
+        </table>
+      </div>
+
+      <!-- Empty State -->
+      <div id="selectorsEmpty" class="empty-state" style="display:none">
+        <div class="empty-illustration">
+          <svg viewBox="0 0 120 120" fill="none">
+            <rect x="25" y="30" width="70" height="60" rx="6" stroke="currentColor" stroke-width="2" opacity="0.3" />
+            <line x1="40" y1="50" x2="80" y2="50" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+              opacity="0.5" />
+            <line x1="40" y1="63" x2="65" y2="63" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+              opacity="0.5" />
+          </svg>
+        </div>
+        <h2 class="empty-title">No selectors found</h2>
+        <p class="empty-desc">No selectors match your current search or filter.</p>
+      </div>
+
+    </div>
+
   </div>
 
   <!-- ===== MODAL ===== -->
