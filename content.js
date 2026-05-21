@@ -115,12 +115,16 @@ async function updateBadgeFromStorage() {
 function applyRTLToElement(element) {
   element.style.setProperty("direction", "rtl", "important");
   element.style.setProperty("text-align", "right", "important");
+  element.style.setProperty("outline", "2px solid #2196F3", "important");
+  element.style.setProperty("outline-offset", "2px", "important");
   element.setAttribute("data-rtl-applied", "true");
 }
 
 function removeRTLFromElement(element) {
   element.style.removeProperty("direction");
   element.style.removeProperty("text-align");
+  element.style.removeProperty("outline");
+  element.style.removeProperty("outline-offset");
   element.removeAttribute("data-rtl-applied");
 }
 
@@ -505,8 +509,6 @@ document.addEventListener(
       await savePageData(pageData);
 
       applyRTLToElement(element);
-      element.style.setProperty("outline", "2px solid #2196F3", "important");
-      element.style.setProperty("outline-offset", "2px", "important");
 
       updateBadgeFromStorage();
       showNotification("➡️ RTL applied & saved");

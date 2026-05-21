@@ -75,10 +75,20 @@ function getFilteredSortedData(allData) {
     pages = pages.map((page) => {
         let filteredSelectors = page.selectors;
 
+        // Si la recherche correspond à l'URL → afficher tous les selectors
+        const urlMatchesSearch = search && page.url.toLowerCase().includes(search);
+
+        if (!urlMatchesSearch && search) {
+            // Filtrer uniquement les selectors qui matchent la recherche
+            filteredSelectors = page.selectors.filter((s) =>
+                s.path.toLowerCase().includes(search)
+            );
+        }
+
         if (filter === "enabled") {
-            filteredSelectors = page.selectors.filter((s) => s.enabled);
+            filteredSelectors = filteredSelectors.filter((s) => s.enabled);
         } else if (filter === "disabled") {
-            filteredSelectors = page.selectors.filter((s) => !s.enabled);
+            filteredSelectors = filteredSelectors.filter((s) => !s.enabled);
         }
 
         return { ...page, selectors: filteredSelectors };
