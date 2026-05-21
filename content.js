@@ -48,6 +48,13 @@ function generateSelectorPath(element) {
   return parts.join(" > ");
 }
 
+function getCurrentTimestamp() {
+  return new Date().toLocaleString("sv-SE", {
+    timeZoneName: "short",
+    hour12: false
+  }).replace(" ", "T").replace(" ", "");
+}
+
 // ===== STORAGE =====
 
 async function loadAllData() {
@@ -375,7 +382,7 @@ async function handleContextMenuRTL() {
       pageData = {
         url: url,
         pageEnabled: true,
-        createdAt: new Date().toISOString(),
+        createdAt: getCurrentTimestamp(),
         selectors: []
       };
     }
@@ -388,7 +395,7 @@ async function handleContextMenuRTL() {
         id: crypto.randomUUID(),
         path: selectorPath,
         enabled: true,
-        createdAt: new Date().toISOString()
+        createdAt: getCurrentTimestamp()
       };
       pageData.selectors.push(selector);
     }
@@ -488,7 +495,7 @@ document.addEventListener(
         pageData = {
           url: url,
           pageEnabled: true,
-          createdAt: new Date().toISOString(),
+          createdAt: getCurrentTimestamp(),
           selectors: []
         };
       }
@@ -501,7 +508,7 @@ document.addEventListener(
           id: crypto.randomUUID(),
           path: selectorPath,
           enabled: true,
-          createdAt: new Date().toISOString()
+          createdAt: getCurrentTimestamp()
         };
         pageData.selectors.push(selector);
       }

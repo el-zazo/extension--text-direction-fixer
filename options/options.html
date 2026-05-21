@@ -1,13 +1,19 @@
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Text Direction Fixer — Options</title>
   <link rel="stylesheet" href="options.css">
   <!-- Prevent flash of wrong theme: hide body until JS sets the correct theme -->
-  <style>body { opacity: 0; }</style>
+  <style>
+    body {
+      opacity: 0;
+    }
+  </style>
 </head>
+
 <body>
   <div class="container">
 
@@ -36,7 +42,9 @@
       <select id="sortSelect" class="select-input">
         <option value="az">A → Z</option>
         <option value="most-selectors">Most Selectors</option>
-        <option value="newest">Newest First</option>
+        <option value="newest">Newest First (Page)</option>
+        <option value="newest-selector">Newest First (Selector)</option>
+        <option value="oldest">Oldest First (Page)</option>
       </select>
     </div>
 
@@ -54,4 +62,5 @@
 
   <script src="options.js"></script>
 </body>
+
 </html>

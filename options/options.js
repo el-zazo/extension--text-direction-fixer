@@ -101,8 +101,11 @@ function getFilteredSortedData(allData) {
 
     // --- Sort ---
     if (sort === "az") {
+        // Sort pages A → Z by URL
         pages.sort((a, b) => a.url.localeCompare(b.url));
+
     } else if (sort === "most-selectors") {
+        // Sort pages by total selectors count
         const originalMap = {};
         allData.forEach((p) => {
             originalMap[p.url] = p.selectors.length;
@@ -110,10 +113,50 @@ function getFilteredSortedData(allData) {
         pages.sort(
             (a, b) => (originalMap[b.url] || 0) - (originalMap[a.url] || 0)
         );
+
     } else if (sort === "newest") {
+        // Sort pages by createdAt DESC (newest page first)
         pages.sort(
             (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
         );
+        // Also sort selectors inside each page by createdAt DESC
+        pages.forEach((page) => {
+            page.selectors.sort(
+                (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+            );
+        });
+
+    } else if (sort === "newest-selector") {
+        // Sort pages by their MOST RECENT selector
+        pages.sort((a, b) => {
+            const latestA = a.selectors.reduce((max, s) =>
+                new Date(s.createdAt) > new Date(max) ? s.createdAt : max,
+                a.selectors[0]?.createdAt || a.createdAt
+            );
+            const latestB = b.selectors.reduce((max, s) =>
+                new Date(s.createdAt) > new Date(max) ? s.createdAt : max,
+                b.selectors[0]?.createdAt || b.createdAt
+            );
+            return new Date(latestB) - new Date(latestA);
+        });
+        // Also sort selectors inside each page by createdAt DESC
+        pages.forEach((page) => {
+            page.selectors.sort(
+                (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+            );
+        });
+
+    } else if (sort === "oldest") {
+        // Sort pages by createdAt ASC (oldest page first)
+        pages.sort(
+            (a, b) => new Date(a.createdAt) - new Date(b.createdAt)
+        );
+        // Also sort selectors inside each page by createdAt ASC
+        pages.forEach((page) => {
+            page.selectors.sort(
+                (a, b) => new Date(a.createdAt) - new Date(b.createdAt)
+            );
+        });
     }
 
     return pages;
