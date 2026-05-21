@@ -1,0 +1,22 @@
+.rtl-notification {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  background-color: #323232;
+  color: white;
+  padding: 16px 24px;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 999999;
+  font-family: Arial, sans-serif;
+  font-size: 14px;
+  opacity: 0;
+  transform: translateY(-20px);
+  transition: all 0.3s ease;
+  pointer-events: none;
+}
+
+.rtl-notification.show {
+  opacity: 1;
+  transform: translateY(0);
+}
