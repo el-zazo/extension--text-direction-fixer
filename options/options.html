@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Text Direction Fixer — Options</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <div class="container">
+
+    <!-- ===== HEADER ===== -->
+    <header>
+      <div class="header-left">
+        <h1>🔄 RTL Direction Manager</h1>
+        <p class="subtitle">Manage your saved RTL selectors across all pages</p>
+      </div>
+      <div class="global-controls">
+        <button id="exportBtn" class="btn btn-secondary">📥 Export JSON</button>
+        <button id="importBtn" class="btn btn-secondary">📤 Import JSON</button>
+        <input type="file" id="importFile" accept=".json" style="display:none">
+        <button id="clearAllBtn" class="btn btn-danger">🗑️ Clear All Data</button>
+      </div>
+    </header>
+
+    <!-- ===== TOOLBAR ===== -->
+    <div class="toolbar">
+      <input type="text" id="searchInput" placeholder="🔍 Search by URL or selector path..." class="search-input">
+      <select id="filterSelect" class="select-input">
+        <option value="all">All</option>
+        <option value="enabled">Enabled Only</option>
+        <option value="disabled">Disabled Only</option>
+      </select>
+      <select id="sortSelect" class="select-input">
+        <option value="az">A → Z</option>
+        <option value="most-selectors">Most Selectors</option>
+        <option value="newest">Newest First</option>
+      </select>
+    </div>
+
+    <!-- ===== PAGE LIST ===== -->
+    <div id="pagesList" class="pages-list"></div>
+
+    <!-- ===== EMPTY STATE ===== -->
+    <div id="emptyState" class="empty-state" style="display:none">
+      <div class="empty-icon">📭</div>
+      <p>No pages with RTL selectors yet.</p>
+      <p class="hint">Use the extension on any webpage to save RTL selectors.</p>
+    </div>
+
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>
