@@ -2,8 +2,39 @@
    Text Direction Fixer — Options Dashboard CSS
    ============================================ */
 
-/* --- CSS Variables --- */
-:root {
+/* --- Dark Theme (DEFAULT) --- */
+:root,
+[data-theme="dark"] {
+  --color-primary: #42a5f5;
+  --color-primary-dark: #90caf9;
+  --color-danger: #ef5350;
+  --color-danger-dark: #f87171;
+  --color-success: #4caf50;
+  --color-warning: #ffb74d;
+  --color-bg: #0f172a;
+  --color-surface: #1e293b;
+  --color-text: #e2e8f0;
+  --color-text-secondary: #94a3b8;
+  --color-border: #334155;
+  --color-hover: #334155;
+  --color-input-bg: #1e293b;
+  --color-input-focus-ring: rgba(66, 165, 245, 0.2);
+  --color-card-hover-shadow: rgba(0, 0, 0, 0.4);
+  --color-row-hover: #334155;
+  --color-path-hover-bg: #2d3a4f;
+  --color-path-hover-border: #42a5f5;
+  --color-status-on-bg: #1b5e20;
+  --color-status-on-text: #a5d6a7;
+  --color-status-off-bg: #4e342e;
+  --color-status-off-text: #ffcc80;
+  --color-toggle-off-bg: #475569;
+  --radius: 10px;
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+/* --- Light Theme --- */
+[data-theme="light"] {
   --color-primary: #2196F3;
   --color-primary-dark: #1976D2;
   --color-danger: #ef4444;
@@ -15,7 +46,18 @@
   --color-text: #1e293b;
   --color-text-secondary: #64748b;
   --color-border: #e2e8f0;
-  --radius: 10px;
+  --color-hover: #f8fafc;
+  --color-input-bg: #ffffff;
+  --color-input-focus-ring: rgba(33, 150, 243, 0.12);
+  --color-card-hover-shadow: rgba(0, 0, 0, 0.1);
+  --color-row-hover: #f8fafc;
+  --color-path-hover-bg: #eff6ff;
+  --color-path-hover-border: #2196F3;
+  --color-status-on-bg: #dcfce7;
+  --color-status-on-text: #166534;
+  --color-status-off-bg: #fef3c7;
+  --color-status-off-text: #92400e;
+  --color-toggle-off-bg: #cbd5e1;
   --shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.06);
   --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
@@ -52,6 +94,12 @@ header {
   flex-wrap: wrap;
 }
 
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
 header h1 {
   font-size: 26px;
   font-weight: 700;
@@ -64,10 +112,33 @@ header h1 {
   margin-top: 4px;
 }
 
+/* --- Theme Toggle Button --- */
+.theme-toggle {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 18px;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.theme-toggle:hover {
+  border-color: var(--color-primary);
+  background: var(--color-hover);
+  transform: scale(1.05);
+}
+
 .global-controls {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
+  align-items: center;
 }
 
 /* --- Buttons --- */
@@ -101,7 +172,7 @@ header h1 {
 }
 
 .btn-secondary:hover {
-  background: #f8fafc;
+  background: var(--color-hover);
   border-color: var(--color-primary);
   color: var(--color-primary);
 }
@@ -127,6 +198,7 @@ header h1 {
   border: 1px solid var(--color-border);
   border-radius: 6px;
   cursor: pointer;
+  color: var(--color-text);
   transition: all 0.15s ease;
 }
 
@@ -157,12 +229,17 @@ header h1 {
   font-size: 14px;
   outline: none;
   transition: border-color 0.15s;
-  background: var(--color-surface);
+  background: var(--color-input-bg);
+  color: var(--color-text);
+}
+
+.search-input::placeholder {
+  color: var(--color-text-secondary);
 }
 
 .search-input:focus {
   border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px rgba(33, 150, 243, 0.12);
+  box-shadow: 0 0 0 3px var(--color-input-focus-ring);
 }
 
 .select-input {
@@ -170,7 +247,8 @@ header h1 {
   border: 1px solid var(--color-border);
   border-radius: 8px;
   font-size: 14px;
-  background: var(--color-surface);
+  background: var(--color-input-bg);
+  color: var(--color-text);
   cursor: pointer;
   outline: none;
   min-width: 150px;
@@ -281,7 +359,7 @@ header h1 {
   left: 0;
   right: 0;
   bottom: 0;
-  background: #cbd5e1;
+  background: var(--color-toggle-off-bg);
   border-radius: 22px;
   transition: background 0.2s;
 }
@@ -321,7 +399,7 @@ header h1 {
 }
 
 .selector-row:hover {
-  background: #f8fafc;
+  background: var(--color-row-hover);
 }
 
 .selector-path {
@@ -339,14 +417,15 @@ header h1 {
 }
 
 .selector-path:hover {
-  border-color: var(--color-primary);
-  background: #eff6ff;
+  border-color: var(--color-path-hover-border);
+  background: var(--color-path-hover-bg);
 }
 
 .selector-path.editing {
-  border-color: var(--color-primary);
-  background: #eff6ff;
+  border-color: var(--color-path-hover-border);
+  background: var(--color-path-hover-bg);
   outline: none;
+  color: var(--color-text);
 }
 
 .selector-status {
@@ -358,13 +437,13 @@ header h1 {
 }
 
 .selector-status.enabled {
-  background: #dcfce7;
-  color: #166534;
+  background: var(--color-status-on-bg);
+  color: var(--color-status-on-text);
 }
 
 .selector-status.disabled {
-  background: #fef3c7;
-  color: #92400e;
+  background: var(--color-status-off-bg);
+  color: var(--color-status-off-text);
 }
 
 .selector-controls {

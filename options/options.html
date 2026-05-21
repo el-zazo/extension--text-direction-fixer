@@ -1,10 +1,12 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Text Direction Fixer — Options</title>
   <link rel="stylesheet" href="options.css">
+  <!-- Prevent flash of wrong theme: hide body until JS sets the correct theme -->
+  <style>body { opacity: 0; }</style>
 </head>
 <body>
   <div class="container">
@@ -13,7 +15,7 @@
     <header>
       <div class="header-left">
         <h1>🔄 RTL Direction Manager</h1>
-        <p class="subtitle">Manage your saved RTL selectors across all pages</p>
+        <button id="themeToggle" class="theme-toggle" title="Toggle Light/Dark Theme">🌙</button>
       </div>
       <div class="global-controls">
         <button id="exportBtn" class="btn btn-secondary">📥 Export JSON</button>

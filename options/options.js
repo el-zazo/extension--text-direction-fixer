@@ -12,6 +12,34 @@ const exportBtn = document.getElementById("exportBtn");
 const importBtn = document.getElementById("importBtn");
 const importFile = document.getElementById("importFile");
 const clearAllBtn = document.getElementById("clearAllBtn");
+const themeToggle = document.getElementById("themeToggle");
+
+// ===== THEME MANAGEMENT =====
+
+async function loadTheme() {
+    const result = await chrome.storage.local.get("rtl_theme");
+    const theme = result.rtl_theme || "dark";
+    applyTheme(theme);
+    // Now reveal the body (was hidden to prevent flash)
+    document.body.style.opacity = "1";
+}
+
+function applyTheme(theme) {
+    document.documentElement.setAttribute("data-theme", theme);
+    themeToggle.textContent = theme === "dark" ? "☀️" : "🌙";
+    themeToggle.title = theme === "dark" ? "Switch to Light Theme" : "Switch to Dark Theme";
+}
+
+async function saveTheme(theme) {
+    await chrome.storage.local.set({ rtl_theme: theme });
+}
+
+themeToggle.addEventListener("click", async () => {
+    const current = document.documentElement.getAttribute("data-theme");
+    const next = current === "dark" ? "light" : "dark";
+    applyTheme(next);
+    await saveTheme(next);
+});
 
 // ===== STORAGE =====
 
@@ -65,7 +93,6 @@ function getFilteredSortedData(allData) {
     if (sort === "az") {
         pages.sort((a, b) => a.url.localeCompare(b.url));
     } else if (sort === "most-selectors") {
-        // Sort by original total selectors (not filtered), descending
         const originalMap = {};
         allData.forEach((p) => {
             originalMap[p.url] = p.selectors.length;
@@ -95,7 +122,6 @@ function renderPages(allData) {
 
     emptyState.style.display = "none";
 
-    // Build HTML
     let html = "";
     for (const page of filtered) {
         const totalAll = page.selectors.length;
@@ -231,7 +257,6 @@ pagesList.addEventListener("click", async (e) => {
         const page = allData.find((p) => p.url === url);
         if (page) {
             page.selectors = page.selectors.filter((s) => s.id !== id);
-            // Remove page entirely if no selectors left
             if (page.selectors.length === 0) {
                 const idx = allData.indexOf(page);
                 allData.splice(idx, 1);
@@ -247,7 +272,6 @@ pagesList.addEventListener("click", async (e) => {
         const id = target.dataset.id;
         const currentPath = target.textContent;
 
-        // Replace span with input
         const input = document.createElement("input");
         input.type = "text";
         input.value = currentPath;
@@ -261,7 +285,6 @@ pagesList.addEventListener("click", async (e) => {
         const save = async () => {
             const newPath = input.value.trim();
             if (!newPath || newPath === currentPath) {
-                // Revert
                 loadAndRender();
                 return;
             }
@@ -285,7 +308,7 @@ pagesList.addEventListener("click", async (e) => {
             }
             if (e.key === "Escape") {
                 e.preventDefault();
-                loadAndRender(); // Revert
+                loadAndRender();
             }
         });
     }
@@ -357,7 +380,6 @@ importFile.addEventListener("change", async (e) => {
         const text = await file.text();
         const parsed = JSON.parse(text);
 
-        // Validate structure
         if (!parsed.rtl_data || !Array.isArray(parsed.rtl_data)) {
             alert("Invalid file: missing 'rtl_data' array.");
             return;
@@ -385,7 +407,6 @@ importFile.addEventListener("change", async (e) => {
         alert("Failed to import: " + err.message);
     }
 
-    // Reset file input so same file can be re-imported
     importFile.value = "";
 });
 
@@ -411,4 +432,5 @@ async function loadAndRender() {
 
 // ===== INIT =====
 
-loadAndRender();
+// Load theme first (prevents flash), then render data
+loadTheme().then(() => loadAndRender());

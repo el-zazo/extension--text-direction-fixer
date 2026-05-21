@@ -1,5 +1,5 @@
 // ============================================
-// Text Direction Fixer - Content Script v2.0
+// Text Direction Fixer - Content Script v2.1
 // ============================================
 
 // ===== STATE =====
@@ -27,7 +27,7 @@ function generateSelectorPath(element) {
     if (current.id) {
       selector += "#" + CSS.escape(current.id);
       parts.unshift(selector);
-      break; // ID is unique — stop traversing up
+      break;
     }
 
     const parent = current.parentElement;
@@ -165,7 +165,7 @@ function stopObserver() {
   }
 }
 
-// ===== STATS NOTIFICATION =====
+// ===== STATS NOTIFICATION (PERSISTENT — manual close only) =====
 
 async function showPageLoadStats() {
   const url = getCurrentUrl();
@@ -188,21 +188,33 @@ async function showPageLoadStats() {
     }
   }
 
-  showNotification(
-    "RTL Stats: " +
-    total +
-    " saved | " +
-    enabled +
-    " active | " +
-    disabled +
-    " disabled | " +
-    inDom +
-    " found in DOM"
-  );
+  if (!pageData.pageEnabled) {
+    // PAGE DISABLED — show warning with distinctive style
+    showPersistentNotification(
+      "PAGE DISABLED | " +
+      total + " saved | " +
+      enabled + " enabled | " +
+      disabled + " disabled | " +
+      inDom + " found in DOM",
+      "No selectors will be applied because this page is disabled. You can re-enable it from the Options page.",
+      true // isWarning
+    );
+  } else {
+    showPersistentNotification(
+      "RTL Stats: " +
+      total + " saved | " +
+      enabled + " active | " +
+      disabled + " disabled | " +
+      inDom + " found in DOM",
+      null,
+      false
+    );
+  }
 }
 
-// ===== NOTIFICATION =====
+// ===== NOTIFICATIONS =====
 
+// Standard auto-dismiss notification (for all non-stats events)
 function showNotification(message) {
   const existing = document.getElementById("rtl-notification");
   if (existing) existing.remove();
@@ -217,7 +229,46 @@ function showNotification(message) {
   setTimeout(() => {
     notification.classList.remove("show");
     setTimeout(() => notification.remove(), 300);
-  }, 3000);
+  }, 2000);
+}
+
+// Persistent notification with close button (for page-load stats only)
+function showPersistentNotification(title, subtitle, isWarning) {
+  const existing = document.getElementById("rtl-notification");
+  if (existing) existing.remove();
+
+  const notification = document.createElement("div");
+  notification.id = "rtl-notification";
+  notification.className = "rtl-notification rtl-persistent" + (isWarning ? " rtl-warning" : "");
+
+  // Close button
+  const closeBtn = document.createElement("span");
+  closeBtn.className = "rtl-close-btn";
+  closeBtn.textContent = "\u2715"; // ✕
+  closeBtn.addEventListener("click", () => {
+    notification.classList.remove("show");
+    setTimeout(() => notification.remove(), 300);
+  });
+
+  // Title line
+  const titleEl = document.createElement("div");
+  titleEl.className = "rtl-notification-title";
+  titleEl.textContent = title;
+
+  notification.appendChild(closeBtn);
+  notification.appendChild(titleEl);
+
+  // Subtitle line (optional — used for page-disabled warning)
+  if (subtitle) {
+    const subEl = document.createElement("div");
+    subEl.className = "rtl-notification-subtitle";
+    subEl.textContent = subtitle;
+    notification.appendChild(subEl);
+  }
+
+  document.body.appendChild(notification);
+  setTimeout(() => notification.classList.add("show"), 10);
+  // No auto-dismiss — user must click ✕
 }
 
 // ===== SELECTION MODE =====
@@ -254,13 +305,11 @@ async function softDeleteAllForCurrentPage() {
     return;
   }
 
-  // Soft delete: set all selectors to enabled=false
   pageData.selectors.forEach((s) => {
     s.enabled = false;
   });
   await savePageData(pageData);
 
-  // Remove RTL visually from all applied elements
   document.querySelectorAll("[data-rtl-applied]").forEach((el) => {
     removeRTLFromElement(el);
     el.style.removeProperty("outline");
@@ -280,7 +329,6 @@ async function handleContextMenuRTL() {
   const url = getCurrentUrl();
 
   if (element.hasAttribute("data-rtl-applied")) {
-    // Find matching selector and soft delete it
     let pageData = await getPageData(url);
     if (pageData) {
       const matchingSelector = pageData.selectors.find((s) => {
@@ -293,7 +341,6 @@ async function handleContextMenuRTL() {
       if (matchingSelector) {
         matchingSelector.enabled = false;
         await savePageData(pageData);
-        // Remove RTL from all elements matching this selector
         try {
           document.querySelectorAll(matchingSelector.path).forEach((el) => {
             removeRTLFromElement(el);
@@ -304,7 +351,6 @@ async function handleContextMenuRTL() {
     updateBadgeFromStorage();
     showNotification("⬅️ RTL removed via context menu");
   } else {
-    // Apply RTL and save selector
     const selectorPath = generateSelectorPath(element);
     let pageData = await getPageData(url);
 
@@ -319,7 +365,7 @@ async function handleContextMenuRTL() {
 
     let selector = pageData.selectors.find((s) => s.path === selectorPath);
     if (selector) {
-      selector.enabled = true; // Re-enable if previously soft-deleted
+      selector.enabled = true;
     } else {
       selector = {
         id: crypto.randomUUID(),
@@ -355,7 +401,6 @@ document.addEventListener("keydown", (e) => {
     isSelectionModeActive = false;
     document.body.style.cursor = "";
 
-    // Fix: Clear hover outline stuck on currently hovered element
     if (
       currentlyHoveredElement &&
       !currentlyHoveredElement.hasAttribute("data-rtl-applied")
@@ -393,7 +438,6 @@ document.addEventListener(
     const url = getCurrentUrl();
 
     if (element.hasAttribute("data-rtl-applied")) {
-      // === SOFT DELETE: find matching selector and disable it ===
       let pageData = await getPageData(url);
       if (pageData) {
         const matchingSelector = pageData.selectors.find((s) => {
@@ -406,7 +450,6 @@ document.addEventListener(
         if (matchingSelector) {
           matchingSelector.enabled = false;
           await savePageData(pageData);
-          // Remove RTL from all elements matching this selector
           try {
             document.querySelectorAll(matchingSelector.path).forEach((el) => {
               removeRTLFromElement(el);
@@ -421,7 +464,6 @@ document.addEventListener(
       updateBadgeFromStorage();
       showNotification("⬅️ RTL removed (disabled in storage)");
     } else {
-      // === APPLY RTL & SAVE SELECTOR ===
       const selectorPath = generateSelectorPath(element);
       let pageData = await getPageData(url);
 
@@ -436,7 +478,7 @@ document.addEventListener(
 
       let selector = pageData.selectors.find((s) => s.path === selectorPath);
       if (selector) {
-        selector.enabled = true; // Re-enable if previously soft-deleted
+        selector.enabled = true;
       } else {
         selector = {
           id: crypto.randomUUID(),

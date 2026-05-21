@@ -21,3 +21,45 @@
   opacity: 1;
   transform: translateY(0);
 }
+
+/* --- Persistent Stats Notification --- */
+.rtl-notification.rtl-persistent {
+  pointer-events: auto;
+  position: relative;
+  padding-right: 36px;
+  max-width: 620px;
+}
+
+.rtl-notification.rtl-persistent .rtl-close-btn {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.6);
+  transition: color 0.15s;
+  pointer-events: auto;
+}
+
+.rtl-notification.rtl-persistent .rtl-close-btn:hover {
+  color: #ffffff;
+}
+
+.rtl-notification.rtl-persistent .rtl-notification-title {
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.rtl-notification.rtl-persistent .rtl-notification-subtitle {
+  font-size: 12px;
+  margin-top: 6px;
+  line-height: 1.4;
+  opacity: 0.85;
+}
+
+/* --- Page Disabled Warning (orange/amber) --- */
+.rtl-notification.rtl-warning {
+  background-color: #e65100;
+  border: 1px solid #ff9800;
+}
