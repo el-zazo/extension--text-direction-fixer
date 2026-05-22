@@ -64,7 +64,6 @@
         </div>
       </div>
 
-      <!-- Toolbar -->
       <div class="toolbar">
         <div class="search-wrap">
           <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -89,7 +88,6 @@
         </div>
       </div>
 
-      <!-- Stats Bar -->
       <div class="stats-bar">
         <div class="stat-pill">
           <span class="stat-pill-dot total"></span>
@@ -109,10 +107,8 @@
         </div>
       </div>
 
-      <!-- Pages Grid -->
       <div id="pagesList" class="pages-grid"></div>
 
-      <!-- Empty State -->
       <div id="pagesEmpty" class="empty-state" style="display:none">
         <div class="empty-illustration">
           <svg viewBox="0 0 120 120" fill="none">
@@ -152,7 +148,6 @@
             <span class="toggle-track"><span class="toggle-thumb"></span></span>
             <span class="toggle-label">Page Active</span>
           </label>
-          <!-- Open page in new tab -->
           <button class="btn btn-ghost btn-sm" id="openPageBtn" title="Open this page in a new tab">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
               <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
@@ -171,7 +166,6 @@
         </div>
       </div>
 
-      <!-- Toolbar -->
       <div class="toolbar">
         <div class="search-wrap">
           <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -195,7 +189,6 @@
         </div>
       </div>
 
-      <!-- Stats Bar -->
       <div class="stats-bar">
         <div class="stat-pill">
           <span class="stat-pill-dot total"></span>
@@ -211,7 +204,6 @@
         </div>
       </div>
 
-      <!-- Selectors Table -->
       <div class="table-wrap" id="selectorsTableWrap">
         <table class="selectors-table">
           <thead>
@@ -226,7 +218,6 @@
         </table>
       </div>
 
-      <!-- Empty State -->
       <div id="selectorsEmpty" class="empty-state" style="display:none">
         <div class="empty-illustration">
           <svg viewBox="0 0 120 120" fill="none">
@@ -245,20 +236,12 @@
 
   </div>
 
-  <!-- ===== MODAL ===== -->
-  <div class="modal-overlay" id="modalOverlay">
-    <div class="modal" id="modal">
-      <div class="modal-icon" id="modalIcon"></div>
-      <h2 class="modal-title" id="modalTitle"></h2>
-      <p class="modal-message" id="modalMessage"></p>
-      <div class="modal-input-wrap" id="modalInputWrap" style="display:none">
-        <input type="text" class="modal-input" id="modalInput">
-      </div>
-      <div class="modal-actions" id="modalActions"></div>
-    </div>
-  </div>
+  <!--
+    Modal overlay — content is injected dynamically by _buildModal()
+    and showStrategyModal(). No static inner markup needed.
+  -->
+  <div class="modal-overlay" id="modalOverlay"></div>
 
-  <!-- ===== TOAST ===== -->
   <div class="toast-container" id="toastContainer"></div>
 
   <script src="options.js"></script>
