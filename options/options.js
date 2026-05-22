@@ -1,6 +1,6 @@
 // ============================================
 // Text Direction Fixer — Options Dashboard JS
-// v3.1 — no sidebar
+// v3.3 — deep import validation + merge strategies
 // ============================================
 
 // ===== DOM REFS =====
@@ -57,7 +57,7 @@ let currentPageUrl = null;
 let pageFilter = "all";
 let selectorFilter = "all";
 
-// ===== CACHED ESCAPE ELEMENT =====
+// ===== HELPERS =====
 const _escEl = document.createElement("div");
 function escapeHtml(str) {
     _escEl.textContent = str;
@@ -89,15 +89,11 @@ function applyTheme(theme) {
     themeToggle.title = theme === "dark" ? "Switch to Light" : "Switch to Dark";
 }
 
-async function saveTheme(theme) {
-    await chrome.storage.local.set({ rtl_theme: theme });
-}
-
 themeToggle.addEventListener("click", async () => {
     const current = document.documentElement.getAttribute("data-theme");
     const next = current === "dark" ? "light" : "dark";
     applyTheme(next);
-    await saveTheme(next);
+    await chrome.storage.local.set({ rtl_theme: next });
 });
 
 // ===== STORAGE =====
@@ -108,7 +104,7 @@ async function loadAllData() {
     if (typeof rtl_data === "object") {
         const migrated = Object.values(rtl_data);
         await chrome.storage.local.set({ rtl_data: migrated });
-        console.info("[RTL] Storage migrated from object to array format");
+        console.info("[RTL] Storage migrated from object to array");
         return migrated;
     }
     return [];
@@ -135,16 +131,21 @@ function showToast(message, type = "info", duration = 2800) {
     }, duration);
 }
 
-// ===== MODAL =====
+// ===== MODAL (base) =====
 let _modalResolve = null;
 
-function showModal({ icon = "", title = "", message = "", buttons = [], inputValue } = {}) {
+function showModal({ icon = "", title = "", message = "", buttons = [], inputValue, bodyHtml } = {}) {
     return new Promise((resolve) => {
         _modalResolve = resolve;
-
         modalIcon.textContent = icon;
         modalTitle.textContent = title;
-        modalMessage.textContent = message;
+
+        // Support either plain text OR raw HTML for the message area
+        if (bodyHtml !== undefined) {
+            modalMessage.innerHTML = bodyHtml;
+        } else {
+            modalMessage.textContent = message;
+        }
 
         const hasInput = inputValue !== undefined;
         modalInputWrap.style.display = hasInput ? "block" : "none";
@@ -156,43 +157,40 @@ function showModal({ icon = "", title = "", message = "", buttons = [], inputVal
             el.className = `btn ${btn.style || "btn-ghost"}`;
             el.textContent = btn.label;
             if (btn.isInput) el.dataset.isInput = "true";
-            el.addEventListener("click", () => {
-                closeModal(btn.value === "__INPUT__" ? modalInput.value.trim() : btn.value);
-            });
+            el.addEventListener("click", () =>
+                closeModal(btn.value === "__INPUT__" ? modalInput.value.trim() : btn.value)
+            );
             modalActions.appendChild(el);
         }
 
         modalOverlay.classList.add("open");
-
-        if (hasInput) {
-            setTimeout(() => { modalInput.focus(); modalInput.select(); }, 120);
-        } else {
-            setTimeout(() => modalActions.querySelector(".btn")?.focus(), 120);
-        }
+        setTimeout(() => {
+            (hasInput ? modalInput : modalActions.querySelector(".btn"))?.focus();
+        }, 120);
     });
 }
 
 function closeModal(value = null) {
     modalOverlay.classList.remove("open");
+    // Clear any injected HTML so it can't bleed into the next modal
+    modalMessage.innerHTML = "";
     if (_modalResolve) { _modalResolve(value); _modalResolve = null; }
 }
 
 modalOverlay.addEventListener("click", (e) => {
     if (e.target === modalOverlay) closeModal(null);
 });
-
 document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && modalOverlay.classList.contains("open")) closeModal(null);
 });
-
 modalInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
         e.preventDefault();
-        const inputBtn = modalActions.querySelector("[data-is-input]");
-        if (inputBtn) inputBtn.click();
+        modalActions.querySelector("[data-is-input]")?.click();
     }
 });
 
+// Confirm helper
 async function confirmModal({ icon = "", title = "", message = "",
     confirmLabel = "Confirm", confirmStyle = "btn-danger" } = {}) {
     const result = await showModal({
@@ -205,7 +203,7 @@ async function confirmModal({ icon = "", title = "", message = "",
     return result === "confirm";
 }
 
-// ===== DATE FORMATTING =====
+// ===== UTILITIES =====
 function formatDate(iso) {
     if (!iso) return "—";
     try {
@@ -215,20 +213,16 @@ function formatDate(iso) {
     } catch { return iso; }
 }
 
-// ===== URL HELPERS =====
 function parseUrl(rawUrl) {
     try {
         const u = new URL(rawUrl);
         return { domain: u.hostname, path: u.pathname === "/" ? "" : u.pathname };
-    } catch {
-        return { domain: rawUrl, path: "" };
-    }
+    } catch { return { domain: rawUrl, path: "" }; }
 }
 
 function getFaviconUrl(rawUrl) {
     try {
-        const u = new URL(rawUrl);
-        return `https://www.google.com/s2/favicons?domain=${u.hostname}&sz=32`;
+        return `https://www.google.com/s2/favicons?domain=${new URL(rawUrl).hostname}&sz=32`;
     } catch { return null; }
 }
 
@@ -238,30 +232,16 @@ function getFilteredPages(allData) {
     const search = pageSearch.value.toLowerCase().trim();
     const sort = pageSortSelect.value;
 
-    let pages = [...allData];
+    let pages = allData.filter(p => p.selectors.length > 0);
 
-    if (search) {
-        pages = pages.filter(p => p.url.toLowerCase().includes(search));
-    }
+    if (search) pages = pages.filter(p => p.url.toLowerCase().includes(search));
+    if (pageFilter === "enabled") pages = pages.filter(p => p.pageEnabled);
+    if (pageFilter === "disabled") pages = pages.filter(p => !p.pageEnabled);
 
-    if (pageFilter === "enabled") {
-        pages = pages.filter(p => p.pageEnabled);
-    } else if (pageFilter === "disabled") {
-        pages = pages.filter(p => !p.pageEnabled);
-    }
-
-    // Always hide pages with 0 selectors after filtering
-    pages = pages.filter(p => p.selectors.length > 0);
-
-    if (sort === "az") {
-        pages.sort((a, b) => a.url.localeCompare(b.url));
-    } else if (sort === "most-selectors") {
-        pages.sort((a, b) => b.selectors.length - a.selectors.length);
-    } else if (sort === "newest") {
-        pages.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-    } else if (sort === "oldest") {
-        pages.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
-    }
+    if (sort === "az") pages.sort((a, b) => a.url.localeCompare(b.url));
+    if (sort === "most-selectors") pages.sort((a, b) => b.selectors.length - a.selectors.length);
+    if (sort === "newest") pages.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    if (sort === "oldest") pages.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
 
     return pages;
 }
@@ -269,7 +249,6 @@ function getFilteredPages(allData) {
 function renderPages(allData) {
     const pages = getFilteredPages(allData);
 
-    // Stats (always calculated from full dataset)
     const total = allData.length;
     const enabled = allData.filter(p => p.pageEnabled).length;
     const totalSel = allData.reduce((n, p) => n + p.selectors.length, 0);
@@ -284,7 +263,6 @@ function renderPages(allData) {
         pagesEmpty.style.display = "";
         return;
     }
-
     pagesEmpty.style.display = "none";
 
     pagesList.innerHTML = pages.map(page => {
@@ -295,12 +273,11 @@ function renderPages(allData) {
         const off = total - on;
 
         return `
-      <div class="page-card ${page.pageEnabled ? "" : "page-inactive"}"
-           data-url="${escapeHtml(page.url)}"
-           role="button" tabindex="0"
-           title="Open selectors for ${escapeHtml(page.url)}">
-
-        <div class="page-card-top">
+      <div class="page-card ${page.pageEnabled ? "" : "page-inactive"}">
+        <div class="page-card-link"
+             data-url="${escapeHtml(page.url)}"
+             role="button" tabindex="0"
+             title="View selectors for ${escapeHtml(page.url)}">
           <div class="page-favicon">
             ${faviconUrl
                 ? `<img src="${escapeHtml(faviconUrl)}" alt=""
@@ -311,19 +288,8 @@ function renderPages(allData) {
             <div class="page-domain">${escapeHtml(domain)}</div>
             ${path ? `<div class="page-path">${escapeHtml(path)}</div>` : ""}
           </div>
-          <div class="page-card-actions">
-            <label class="toggle-wrap sm" title="Toggle page active/inactive"
-                   onclick="event.stopPropagation()">
-              <input type="checkbox" class="toggle-input page-toggle-cb"
-                     data-url="${escapeHtml(page.url)}"
-                     ${page.pageEnabled ? "checked" : ""}>
-              <span class="toggle-track"><span class="toggle-thumb"></span></span>
-            </label>
-          </div>
+          <span class="page-arrow">→</span>
         </div>
-
-        <div class="page-card-divider"></div>
-
         <div class="page-card-bottom">
           <div class="page-selector-counts">
             <span class="count-item">
@@ -339,9 +305,14 @@ function renderPages(allData) {
               <span class="count-num">${off}</span>&thinsp;off
             </span>
           </div>
-          <span class="page-arrow">→</span>
+          <label class="toggle-wrap sm" title="Enable / disable page">
+            <input type="checkbox"
+                   class="toggle-input page-toggle-cb"
+                   data-url="${escapeHtml(page.url)}"
+                   ${page.pageEnabled ? "checked" : ""}>
+            <span class="toggle-track"><span class="toggle-thumb"></span></span>
+          </label>
         </div>
-
       </div>
     `;
     }).join("");
@@ -356,17 +327,12 @@ function getFilteredSelectors(page) {
     let sels = [...page.selectors];
 
     if (search) sels = sels.filter(s => s.path.toLowerCase().includes(search));
-
     if (selectorFilter === "enabled") sels = sels.filter(s => s.enabled);
     if (selectorFilter === "disabled") sels = sels.filter(s => !s.enabled);
 
-    if (sort === "newest") {
-        sels.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-    } else if (sort === "oldest") {
-        sels.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
-    } else if (sort === "az") {
-        sels.sort((a, b) => a.path.localeCompare(b.path));
-    }
+    if (sort === "newest") sels.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    if (sort === "oldest") sels.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+    if (sort === "az") sels.sort((a, b) => a.path.localeCompare(b.path));
 
     return sels;
 }
@@ -385,7 +351,6 @@ function renderSelectors(page) {
         selectorsEmpty.style.display = "";
         return;
     }
-
     selectorsEmpty.style.display = "none";
     selectorsTableWrap.style.display = "";
 
@@ -409,13 +374,13 @@ function renderSelectors(page) {
       <td class="td-date">${formatDate(sel.createdAt)}</td>
       <td>
         <div class="td-actions">
-          <button class="action-btn sel-edit-btn" data-id="${sel.id}" title="Edit selector">
+          <button class="action-btn sel-edit-btn" data-id="${sel.id}" title="Edit">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
               <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
             </svg>
           </button>
-          <button class="action-btn danger sel-delete-btn" data-id="${sel.id}" title="Delete selector">
+          <button class="action-btn danger sel-delete-btn" data-id="${sel.id}" title="Delete">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="3 6 5 6 21 6"/>
               <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
@@ -435,7 +400,7 @@ function autoResizeTextarea(ta) {
     ta.style.height = ta.scrollHeight + "px";
 }
 
-// ===== NAVIGATE TO SELECTORS VIEW =====
+// ===== NAVIGATION =====
 
 async function openSelectorsView(url) {
     currentPageUrl = url;
@@ -443,22 +408,19 @@ async function openSelectorsView(url) {
     const page = allData.find(p => p.url === url);
     if (!page) return;
 
-    const { domain } = parseUrl(url);
-    selectorViewTitle.textContent = domain;
+    selectorViewTitle.textContent = parseUrl(url).domain;
     selectorViewUrl.textContent = url;
     pageToggleMain.checked = page.pageEnabled;
 
-    // Reset search / filter for this view
     selectorSearch.value = "";
     selectorSearchClear.style.display = "none";
     selectorFilter = "all";
-    document.querySelectorAll('[data-target="selector"]').forEach(el => {
-        el.classList.toggle("active", el.dataset.filter === "all");
-    });
+    document.querySelectorAll('[data-target="selector"]').forEach(el =>
+        el.classList.toggle("active", el.dataset.filter === "all")
+    );
 
     viewPages.classList.remove("active");
     viewSelectors.classList.add("active");
-
     renderSelectors(page);
 }
 
@@ -469,65 +431,54 @@ backBtn.addEventListener("click", () => {
     loadAndRenderPages();
 });
 
-// ===== PAGES GRID EVENTS =====
+// ===== PAGES GRID — EVENTS =====
 
 pagesList.addEventListener("click", async (e) => {
-    // Ignore toggle clicks (handled by change)
-    if (e.target.closest(".page-toggle-cb")) return;
-
-    const card = e.target.closest(".page-card");
-    if (card?.dataset.url) await openSelectorsView(card.dataset.url);
+    const link = e.target.closest(".page-card-link");
+    if (link?.dataset.url) {
+        await openSelectorsView(link.dataset.url);
+    }
 });
 
 pagesList.addEventListener("keydown", async (e) => {
-    if (e.key === "Enter" || e.key === " ") {
-        const card = e.target.closest(".page-card");
-        if (card) { e.preventDefault(); await openSelectorsView(card.dataset.url); }
-    }
+    if (e.key !== "Enter" && e.key !== " ") return;
+    const link = e.target.closest(".page-card-link");
+    if (link?.dataset.url) { e.preventDefault(); await openSelectorsView(link.dataset.url); }
 });
 
-// Only change event for toggles (avoids double-fire)
 pagesList.addEventListener("change", async (e) => {
     const cb = e.target.closest(".page-toggle-cb");
     if (!cb) return;
-
     const url = cb.dataset.url;
     const allData = await loadAllData();
     const page = allData.find(p => p.url === url);
-    if (page) {
-        page.pageEnabled = cb.checked;
-        await saveAllData(allData);
-        await loadAndRenderPages();
-        showToast(cb.checked ? "Page enabled" : "Page disabled", "info");
-    }
+    if (!page) return;
+    page.pageEnabled = cb.checked;
+    await saveAllData(allData);
+    await loadAndRenderPages();
+    showToast(cb.checked ? "Page enabled" : "Page disabled", "info");
 });
 
-// ===== SELECTORS TABLE EVENTS =====
+// ===== SELECTORS TABLE — EVENTS =====
 
-// Toggle — change event only
 selectorsTbody.addEventListener("change", async (e) => {
     const cb = e.target.closest(".sel-toggle-cb");
     if (!cb || !currentPageUrl) return;
-
     const id = cb.dataset.id;
     const allData = await loadAllData();
     const page = allData.find(p => p.url === currentPageUrl);
     if (!page) return;
-
     const sel = page.selectors.find(s => s.id === id);
-    if (sel) {
-        sel.enabled = cb.checked;
-        await saveAllData(allData);
-        const on = page.selectors.filter(s => s.enabled).length;
-        statSelectorEnabled.textContent = on;
-        statSelectorDisabled.textContent = page.selectors.length - on;
-        showToast(cb.checked ? "Selector enabled" : "Selector disabled", "info");
-    }
+    if (!sel) return;
+    sel.enabled = cb.checked;
+    await saveAllData(allData);
+    const on = page.selectors.filter(s => s.enabled).length;
+    statSelectorEnabled.textContent = on;
+    statSelectorDisabled.textContent = page.selectors.length - on;
+    showToast(cb.checked ? "Selector enabled" : "Selector disabled", "info");
 });
 
-// Edit / Delete buttons
 selectorsTbody.addEventListener("click", async (e) => {
-    // Edit — focus the textarea in that row
     const editBtn = e.target.closest(".sel-edit-btn");
     if (editBtn) {
         const ta = editBtn.closest("tr")?.querySelector(".td-path-editable");
@@ -535,7 +486,6 @@ selectorsTbody.addEventListener("click", async (e) => {
         return;
     }
 
-    // Delete
     const delBtn = e.target.closest(".sel-delete-btn");
     if (delBtn && currentPageUrl) {
         const id = delBtn.dataset.id;
@@ -545,19 +495,15 @@ selectorsTbody.addEventListener("click", async (e) => {
         if (!sel) return;
 
         const confirmed = await confirmModal({
-            icon: "🗑️",
-            title: "Delete Selector",
+            icon: "🗑️", title: "Delete Selector",
             message: `Delete this selector permanently?\n\n${sel.path}`,
             confirmLabel: "Delete"
         });
         if (!confirmed) return;
 
         page.selectors = page.selectors.filter(s => s.id !== id);
-
         if (page.selectors.length === 0) {
-            // Page now empty — remove it and go back
-            const idx = allData.indexOf(page);
-            allData.splice(idx, 1);
+            allData.splice(allData.indexOf(page), 1);
             await saveAllData(allData);
             viewSelectors.classList.remove("active");
             viewPages.classList.add("active");
@@ -572,56 +518,42 @@ selectorsTbody.addEventListener("click", async (e) => {
     }
 });
 
-// Inline textarea editing
 selectorsTbody.addEventListener("focusin", (e) => {
     const ta = e.target.closest(".td-path-editable");
     if (ta) autoResizeTextarea(ta);
 });
-
 selectorsTbody.addEventListener("input", (e) => {
     const ta = e.target.closest(".td-path-editable");
     if (ta) autoResizeTextarea(ta);
 });
-
 selectorsTbody.addEventListener("keydown", (e) => {
     const ta = e.target.closest(".td-path-editable");
     if (!ta) return;
-
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); ta.blur(); }
-    if (e.key === "Escape") {
-        e.preventDefault();
-        ta.dataset.cancelled = "true";
-        ta.blur();
-    }
+    if (e.key === "Escape") { e.preventDefault(); ta.dataset.cancelled = "true"; ta.blur(); }
 });
-
 selectorsTbody.addEventListener("focusout", async (e) => {
     const ta = e.target.closest(".td-path-editable");
     if (!ta || !currentPageUrl) return;
-
     const id = ta.dataset.id;
-    const newPath = ta.value.trim();
     const allData = await loadAllData();
     const page = allData.find(p => p.url === currentPageUrl);
     if (!page) return;
-
     const sel = page.selectors.find(s => s.id === id);
     if (!sel) return;
 
-    // Escape was pressed — restore original
     if (ta.dataset.cancelled === "true") {
         delete ta.dataset.cancelled;
         ta.value = sel.path;
         autoResizeTextarea(ta);
         return;
     }
-
+    const newPath = ta.value.trim();
     if (!newPath || newPath === sel.path) {
         ta.value = sel.path;
         autoResizeTextarea(ta);
         return;
     }
-
     sel.path = newPath;
     await saveAllData(allData);
     showToast("Selector updated", "success");
@@ -634,27 +566,22 @@ pageToggleMain.addEventListener("change", async () => {
     if (!currentPageUrl) return;
     const allData = await loadAllData();
     const page = allData.find(p => p.url === currentPageUrl);
-    if (page) {
-        page.pageEnabled = pageToggleMain.checked;
-        await saveAllData(allData);
-        showToast(page.pageEnabled ? "Page enabled" : "Page disabled", "info");
-    }
+    if (!page) return;
+    page.pageEnabled = pageToggleMain.checked;
+    await saveAllData(allData);
+    showToast(page.pageEnabled ? "Page enabled" : "Page disabled", "info");
 });
 
 deletePageBtn.addEventListener("click", async () => {
     if (!currentPageUrl) return;
     const confirmed = await confirmModal({
-        icon: "🗑️",
-        title: "Delete Page",
+        icon: "🗑️", title: "Delete Page",
         message: `Delete all RTL data for:\n${currentPageUrl}\n\nThis cannot be undone.`,
         confirmLabel: "Delete Page"
     });
     if (!confirmed) return;
-
     const allData = await loadAllData();
-    const filtered = allData.filter(p => p.url !== currentPageUrl);
-    await saveAllData(filtered);
-
+    await saveAllData(allData.filter(p => p.url !== currentPageUrl));
     viewSelectors.classList.remove("active");
     viewPages.classList.add("active");
     currentPageUrl = null;
@@ -668,18 +595,11 @@ document.querySelectorAll(".filter-chip").forEach(chip => {
     chip.addEventListener("click", () => {
         const target = chip.dataset.target;
         const filter = chip.dataset.filter;
-
-        document.querySelectorAll(`.filter-chip[data-target="${target}"]`).forEach(c => {
-            c.classList.toggle("active", c === chip);
-        });
-
-        if (target === "page") {
-            pageFilter = filter;
-            loadAndRenderPages();
-        } else {
-            selectorFilter = filter;
-            refreshSelectorsView();
-        }
+        document.querySelectorAll(`.filter-chip[data-target="${target}"]`).forEach(c =>
+            c.classList.toggle("active", c === chip)
+        );
+        if (target === "page") { pageFilter = filter; loadAndRenderPages(); }
+        else { selectorFilter = filter; refreshSelectorsView(); }
     });
 });
 
@@ -689,102 +609,408 @@ pageSearch.addEventListener("input", () => {
     pageSearchClear.style.display = pageSearch.value ? "" : "none";
     loadAndRenderPages();
 });
-
 pageSearchClear.addEventListener("click", () => {
-    pageSearch.value = "";
-    pageSearchClear.style.display = "none";
-    loadAndRenderPages();
+    pageSearch.value = ""; pageSearchClear.style.display = "none"; loadAndRenderPages();
 });
 
 selectorSearch.addEventListener("input", () => {
     selectorSearchClear.style.display = selectorSearch.value ? "" : "none";
     refreshSelectorsView();
 });
-
 selectorSearchClear.addEventListener("click", () => {
-    selectorSearch.value = "";
-    selectorSearchClear.style.display = "none";
-    refreshSelectorsView();
+    selectorSearch.value = ""; selectorSearchClear.style.display = "none"; refreshSelectorsView();
 });
 
 // ===== SORT =====
-
 pageSortSelect.addEventListener("change", () => loadAndRenderPages());
 selectorSortSelect.addEventListener("change", () => refreshSelectorsView());
 
-// ===== GLOBAL CONTROLS =====
+// ===== EXPORT =====
 
 exportBtn.addEventListener("click", async () => {
     const allData = await loadAllData();
-    const json = JSON.stringify({ rtl_data: allData }, null, 2);
-    const blob = new Blob([json], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `rtl-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    const blob = new Blob([JSON.stringify({ rtl_data: allData }, null, 2)],
+        { type: "application/json" });
+    const a = Object.assign(document.createElement("a"), {
+        href: URL.createObjectURL(blob),
+        download: `rtl-backup-${new Date().toISOString().slice(0, 10)}.json`
+    });
     a.click();
-    URL.revokeObjectURL(url);
+    URL.revokeObjectURL(a.href);
     showToast("Data exported successfully", "success");
 });
+
+// ===== IMPORT — DEEP VALIDATION =====
+
+/**
+ * Validate a single selector object.
+ * Returns an array of error strings (empty = valid).
+ */
+function validateSelector(sel, index) {
+    const errors = [];
+    const ctx = `Selector #${index + 1}`;
+
+    if (typeof sel !== "object" || sel === null || Array.isArray(sel)) {
+        errors.push(`${ctx}: must be an object`);
+        return errors; // no point checking further
+    }
+
+    // id — must be a non-empty string
+    if (typeof sel.id !== "string" || sel.id.trim() === "") {
+        errors.push(`${ctx}: "id" must be a non-empty string`);
+    }
+
+    // path — must be a non-empty string
+    if (typeof sel.path !== "string" || sel.path.trim() === "") {
+        errors.push(`${ctx}: "path" must be a non-empty string`);
+    }
+
+    // enabled — must be a boolean
+    if (typeof sel.enabled !== "boolean") {
+        errors.push(`${ctx}: "enabled" must be a boolean (true/false)`);
+    }
+
+    // createdAt — optional but if present must be parseable
+    if (sel.createdAt !== undefined) {
+        const d = new Date(sel.createdAt);
+        if (isNaN(d.getTime())) {
+            errors.push(`${ctx}: "createdAt" is not a valid date string`);
+        }
+    }
+
+    return errors;
+}
+
+/**
+ * Validate a single page object.
+ * Returns an array of error strings (empty = valid).
+ */
+function validatePage(page, index) {
+    const errors = [];
+    const ctx = `Page #${index + 1}`;
+
+    if (typeof page !== "object" || page === null || Array.isArray(page)) {
+        errors.push(`${ctx}: must be an object`);
+        return errors;
+    }
+
+    // url — must be a non-empty string and a parseable URL
+    if (typeof page.url !== "string" || page.url.trim() === "") {
+        errors.push(`${ctx}: "url" must be a non-empty string`);
+    } else {
+        try { new URL(page.url); }
+        catch { errors.push(`${ctx}: "url" is not a valid URL ("${page.url}")`); }
+    }
+
+    // pageEnabled — must be a boolean
+    if (typeof page.pageEnabled !== "boolean") {
+        errors.push(`${ctx} (${page.url ?? "?"}): "pageEnabled" must be a boolean`);
+    }
+
+    // createdAt — optional but if present must be parseable
+    if (page.createdAt !== undefined) {
+        const d = new Date(page.createdAt);
+        if (isNaN(d.getTime())) {
+            errors.push(`${ctx} (${page.url ?? "?"}): "createdAt" is not a valid date string`);
+        }
+    }
+
+    // selectors — must be an array
+    if (!Array.isArray(page.selectors)) {
+        errors.push(`${ctx} (${page.url ?? "?"}): "selectors" must be an array`);
+    } else {
+        // Validate each selector — collect first error per selector only
+        page.selectors.forEach((sel, si) => {
+            const selErrors = validateSelector(sel, si);
+            errors.push(...selErrors.slice(0, 1)); // one error per selector keeps the list manageable
+        });
+    }
+
+    return errors;
+}
+
+/**
+ * Fully validate a parsed JSON object.
+ * Returns { ok: true } or { ok: false, errors: string[] }
+ */
+function validateImportPayload(parsed) {
+    const errors = [];
+
+    // Top-level structure
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+        return { ok: false, errors: ["File must contain a JSON object at the top level"] };
+    }
+
+    if (!Object.prototype.hasOwnProperty.call(parsed, "rtl_data")) {
+        return { ok: false, errors: ['Missing top-level key "rtl_data"'] };
+    }
+
+    if (!Array.isArray(parsed.rtl_data)) {
+        return { ok: false, errors: ['"rtl_data" must be an array'] };
+    }
+
+    if (parsed.rtl_data.length === 0) {
+        // Empty array is technically valid — we'll warn but not block
+        return { ok: true, warnings: ["The file contains no pages (empty array)"] };
+    }
+
+    // Validate each page — stop collecting after 10 errors to keep the UI readable
+    for (let i = 0; i < parsed.rtl_data.length; i++) {
+        const pageErrors = validatePage(parsed.rtl_data[i], i);
+        errors.push(...pageErrors);
+        if (errors.length >= 10) {
+            errors.push(`… and more errors (only first 10 shown)`);
+            break;
+        }
+    }
+
+    return errors.length === 0
+        ? { ok: true }
+        : { ok: false, errors };
+}
+
+// ===== IMPORT — MERGE STRATEGIES =====
+
+/**
+ * Apply a merge strategy to combine existing data with incoming data.
+ *
+ * Strategies:
+ *  "replace"      — discard everything, use incoming data as-is
+ *  "merge-keep"   — for duplicate URLs: merge selectors (dedup by path),
+ *                   keep OLD page-level meta (pageEnabled, createdAt)
+ *  "merge-update" — for duplicate URLs: merge selectors (dedup by path),
+ *                   use NEW page-level meta (pageEnabled, createdAt)
+ *  "skip"         — only add pages whose URL does not already exist
+ */
+function applyMergeStrategy(existing, incoming, strategy) {
+    if (strategy === "replace") {
+        return incoming;
+    }
+
+    if (strategy === "skip") {
+        const existingUrls = new Set(existing.map(p => p.url));
+        const newPages = incoming.filter(p => !existingUrls.has(p.url));
+        return [...existing, ...newPages];
+    }
+
+    // "merge-keep" or "merge-update"
+    const result = existing.map(p => ({ ...p, selectors: [...p.selectors] }));
+    const urlIndex = new Map(result.map((p, i) => [p.url, i]));
+
+    for (const incomingPage of incoming) {
+        if (urlIndex.has(incomingPage.url)) {
+            const idx = urlIndex.get(incomingPage.url);
+            const oldPage = result[idx];
+
+            // Merge selectors: deduplicate by path, old selectors take priority for matching paths
+            const pathsSeen = new Map(oldPage.selectors.map(s => [s.path, s]));
+            for (const newSel of incomingPage.selectors) {
+                if (!pathsSeen.has(newSel.path)) {
+                    pathsSeen.set(newSel.path, newSel);
+                }
+                // If path already exists we keep the old selector as-is
+            }
+            const mergedSelectors = [...pathsSeen.values()];
+
+            if (strategy === "merge-keep") {
+                // Keep old page-level meta
+                result[idx] = { ...oldPage, selectors: mergedSelectors };
+            } else {
+                // "merge-update" — use new page-level meta but merged selectors
+                result[idx] = {
+                    ...oldPage,               // keep as base
+                    pageEnabled: incomingPage.pageEnabled ?? oldPage.pageEnabled,
+                    createdAt: incomingPage.createdAt ?? oldPage.createdAt,
+                    selectors: mergedSelectors,
+                };
+            }
+        } else {
+            // Brand-new URL — always add it
+            result.push(incomingPage);
+            urlIndex.set(incomingPage.url, result.length - 1);
+        }
+    }
+
+    return result;
+}
+
+// ===== IMPORT — STRATEGY PICKER MODAL =====
+
+/**
+ * Show a custom modal that lets the user pick one of the 4 import strategies.
+ * Returns the chosen strategy string, or null if cancelled.
+ */
+function showStrategyModal(stats) {
+    return new Promise((resolve) => {
+        _modalResolve = resolve;
+
+        modalIcon.textContent = "📥";
+        modalTitle.textContent = "Choose Import Strategy";
+
+        // Build the rich body
+        modalMessage.innerHTML = `
+      <div class="import-stats">
+        <span class="import-stat">
+          <strong>${stats.incomingPages}</strong> page${stats.incomingPages !== 1 ? "s" : ""}
+        </span>
+        <span class="import-stat-sep">·</span>
+        <span class="import-stat">
+          <strong>${stats.incomingSelectors}</strong> selector${stats.incomingSelectors !== 1 ? "s" : ""}
+        </span>
+        <span class="import-stat-sep">·</span>
+        <span class="import-stat">
+          <strong>${stats.duplicateUrls}</strong> duplicate URL${stats.duplicateUrls !== 1 ? "s" : ""}
+        </span>
+      </div>
+      <p class="import-desc">How should the imported data be combined with your existing data?</p>
+    `;
+
+        modalInputWrap.style.display = "none";
+
+        // Build strategy option buttons
+        const strategies = [
+            {
+                value: "replace",
+                label: "Replace All",
+                sublabel: "Discard current data, use imported data only",
+                icon: "🔄",
+                style: "strategy-btn strategy-danger",
+            },
+            {
+                value: "merge-keep",
+                label: "Merge — Keep existing info",
+                sublabel: "Combine selectors. For duplicate pages, keep current page settings",
+                icon: "🔀",
+                style: "strategy-btn",
+            },
+            {
+                value: "merge-update",
+                label: "Merge — Use imported info",
+                sublabel: "Combine selectors. For duplicate pages, use imported page settings",
+                icon: "🔁",
+                style: "strategy-btn",
+            },
+            {
+                value: "skip",
+                label: "Skip Duplicates",
+                sublabel: "Only add pages that don't already exist",
+                icon: "⏭️",
+                style: "strategy-btn",
+            },
+        ];
+
+        modalActions.innerHTML = `
+      <div class="strategy-list">
+        ${strategies.map(s => `
+          <button class="${s.style}" data-strategy="${s.value}">
+            <span class="strategy-icon">${s.icon}</span>
+            <span class="strategy-text">
+              <span class="strategy-label">${s.label}</span>
+              <span class="strategy-sublabel">${s.sublabel}</span>
+            </span>
+          </button>
+        `).join("")}
+      </div>
+      <button class="btn btn-ghost btn-sm strategy-cancel">Cancel</button>
+    `;
+
+        // Wire buttons
+        modalActions.querySelectorAll("[data-strategy]").forEach(btn => {
+            btn.addEventListener("click", () => closeModal(btn.dataset.strategy));
+        });
+        modalActions.querySelector(".strategy-cancel").addEventListener("click", () => closeModal(null));
+
+        modalOverlay.classList.add("open");
+        setTimeout(() => modalActions.querySelector(".strategy-btn")?.focus(), 120);
+    });
+}
+
+// ===== IMPORT — MAIN HANDLER =====
 
 importBtn.addEventListener("click", () => importFile.click());
 
 importFile.addEventListener("change", async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    importFile.value = ""; // reset so same file can be re-picked
 
+    // ── Step 1: parse JSON ──
+    let parsed;
     try {
-        const text = await file.text();
-        const parsed = JSON.parse(text);
-
-        if (!parsed.rtl_data || !Array.isArray(parsed.rtl_data)) {
-            showToast("Invalid file: missing 'rtl_data' array", "error", 4000);
-            return;
-        }
-
-        for (const page of parsed.rtl_data) {
-            if (!page.url || !Array.isArray(page.selectors)) {
-                showToast("Invalid file: each page needs 'url' and 'selectors'", "error", 4000);
-                return;
-            }
-        }
-
-        const confirmed = await confirmModal({
-            icon: "📤",
-            title: "Import Data",
-            message: "This will REPLACE all current data with the imported file. Continue?",
-            confirmLabel: "Import",
-            confirmStyle: "btn-primary"
-        });
-        if (!confirmed) return;
-
-        await saveAllData(parsed.rtl_data);
-        await loadAndRenderPages();
-        showToast("Import successful!", "success");
+        parsed = JSON.parse(await file.text());
     } catch (err) {
-        showToast("Failed to import: " + err.message, "error", 5000);
+        await showModal({
+            icon: "❌", title: "Invalid JSON",
+            message: `The file could not be parsed as JSON.\n\n${err.message}`,
+            buttons: [{ label: "OK", style: "btn-primary", value: "ok" }]
+        });
+        return;
     }
 
-    importFile.value = "";
+    // ── Step 2: deep validate ──
+    const { ok, errors, warnings } = validateImportPayload(parsed);
+
+    if (!ok) {
+        // Show all validation errors (max 10 already capped inside validator)
+        const errorList = errors.map(e => `• ${e}`).join("\n");
+        await showModal({
+            icon: "⚠️", title: "Validation Failed",
+            message: `The file contains ${errors.length} error${errors.length !== 1 ? "s" : ""}:\n\n${errorList}`,
+            buttons: [{ label: "OK", style: "btn-primary", value: "ok" }]
+        });
+        return;
+    }
+
+    // Non-blocking warning (e.g. empty array)
+    if (warnings?.length) {
+        const cont = await confirmModal({
+            icon: "ℹ️", title: "Import Warning",
+            message: warnings.join("\n") + "\n\nContinue anyway?",
+            confirmLabel: "Continue", confirmStyle: "btn-primary"
+        });
+        if (!cont) return;
+    }
+
+    // ── Step 3: compute stats for the strategy picker ──
+    const existing = await loadAllData();
+    const existingUrls = new Set(existing.map(p => p.url));
+    const incomingPages = parsed.rtl_data.length;
+    const incomingSelectors = parsed.rtl_data.reduce((n, p) => n + p.selectors.length, 0);
+    const duplicateUrls = parsed.rtl_data.filter(p => existingUrls.has(p.url)).length;
+
+    // ── Step 4: let the user pick a strategy ──
+    const strategy = await showStrategyModal({ incomingPages, incomingSelectors, duplicateUrls });
+    if (!strategy) return; // user cancelled
+
+    // ── Step 5: apply and save ──
+    const merged = applyMergeStrategy(existing, parsed.rtl_data, strategy);
+    await saveAllData(merged);
+    await loadAndRenderPages();
+
+    const strategyLabels = {
+        "replace": "Replaced all data",
+        "merge-keep": "Merged (kept existing page info)",
+        "merge-update": "Merged (used imported page info)",
+        "skip": "Imported new pages only (duplicates skipped)",
+    };
+    showToast(`✓ ${strategyLabels[strategy]}`, "success", 3500);
 });
 
+// ===== CLEAR ALL =====
+
 clearAllBtn.addEventListener("click", async () => {
-    const confirmed = await confirmModal({
-        icon: "⚠️",
-        title: "Clear All Data",
+    const ok = await confirmModal({
+        icon: "⚠️", title: "Clear All Data",
         message: "Delete ALL saved RTL data?\n\nThis cannot be undone.",
         confirmLabel: "Clear All"
     });
-    if (!confirmed) return;
-
+    if (!ok) return;
     await saveAllData([]);
-
     if (viewSelectors.classList.contains("active")) {
         viewSelectors.classList.remove("active");
         viewPages.classList.add("active");
         currentPageUrl = null;
     }
-
     await loadAndRenderPages();
     showToast("All data cleared", "warning");
 });
@@ -792,8 +1018,7 @@ clearAllBtn.addEventListener("click", async () => {
 // ===== LOAD HELPERS =====
 
 async function loadAndRenderPages() {
-    const allData = await loadAllData();
-    renderPages(allData);
+    renderPages(await loadAllData());
 }
 
 async function refreshSelectorsView() {
