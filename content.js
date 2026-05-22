@@ -7,6 +7,48 @@ let isSelectionModeActive = false;
 let currentlyHoveredElement = null;
 let lastRightClickedElement = null;
 let observerDebounceTimer = null;
+let statsPollingInterval = null; // tracked so we can cancel it on invalidation
+let extensionContextAlive = true; // flips to false on context invalidation
+
+// ===== CONTEXT INVALIDATION GUARD =====
+
+/**
+ * Returns true if the extension context is still valid.
+ * Once Chrome invalidates the context (e.g. after an extension reload),
+ * any call to chrome.* APIs throws "Extension context invalidated."
+ * We detect this once and stop all further async work.
+ */
+function isContextAlive() {
+  if (!extensionContextAlive) return false;
+  try {
+    // Cheapest possible probe — reading chrome.runtime.id throws if invalidated
+    void chrome.runtime.id;
+    return true;
+  } catch {
+    extensionContextAlive = false;
+    stopAllAsyncWork();
+    return false;
+  }
+}
+
+/**
+ * Shut down everything that runs on a timer or reacts to DOM mutations
+ * when the extension context is no longer valid.
+ */
+function stopAllAsyncWork() {
+  // Stop the mutation observer
+  if (observer) {
+    observer.disconnect();
+    observer = null;
+  }
+  clearTimeout(observerDebounceTimer);
+
+  // Stop the stats polling loop
+  if (statsPollingInterval !== null) {
+    clearInterval(statsPollingInterval);
+    statsPollingInterval = null;
+  }
+}
 
 // ===== UTILITIES =====
 
@@ -16,14 +58,6 @@ function getCurrentUrl() {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SELECTOR GENERATION
-//
-// Goal: produce the SHORTEST selector that matches EXACTLY ONE element in the
-//       current document — the element the user clicked.
-//
-// Strategy cascade (each candidate verified with matchesOnly before use):
-//   1. Own id — if genuinely unique in the document
-//   2. Path anchored at a unique ancestor id + positional segments below it
-//   3. Full positional path from body using :nth-child (always unique)
 // ─────────────────────────────────────────────────────────────────────────────
 
 function matchesOnly(selector, element) {
@@ -70,9 +104,8 @@ function buildAnchoredPath(element) {
             ? anchorSel
             : anchorSel + " > " + descendantParts.join(" > ");
           if (matchesOnly(candidate, element)) return candidate;
-          return null; // anchor unique but full path isn't — positional fallback
+          return null;
         }
-        // duplicate id — keep walking up
       } catch { /* skip */ }
     }
     descendantParts.unshift(segment(current));
@@ -85,15 +118,12 @@ function generateSelectorPath(element) {
   if (!element || element === document.body || element === document.documentElement) {
     return "body";
   }
-
   if (element.id) {
     const sel = "#" + CSS.escape(element.id);
     if (matchesOnly(sel, element)) return sel;
   }
-
   const anchored = buildAnchoredPath(element);
   if (anchored) return anchored;
-
   return buildPositionalPath(element);
 }
 
@@ -102,8 +132,11 @@ function getCurrentTimestamp() {
 }
 
 // ===== STORAGE =====
+// Every function that touches chrome.* first checks isContextAlive().
+// The outer try/catch in loadAllData catches any residual throws.
 
 async function loadAllData() {
+  if (!isContextAlive()) return [];
   try {
     const { rtl_data } = await chrome.storage.local.get("rtl_data");
     if (!rtl_data) return [];
@@ -116,13 +149,26 @@ async function loadAllData() {
     }
     return [];
   } catch (e) {
+    // Catch context-invalidation errors silently — they are expected after
+    // an extension reload and are not a bug in the page or our logic.
+    if (isInvalidationError(e)) {
+      extensionContextAlive = false;
+      stopAllAsyncWork();
+      return [];
+    }
     console.error("[RTL] Error loading data:", e);
     return [];
   }
 }
 
 async function saveAllData(data) {
-  await chrome.storage.local.set({ rtl_data: data });
+  if (!isContextAlive()) return;
+  try {
+    await chrome.storage.local.set({ rtl_data: data });
+  } catch (e) {
+    if (isInvalidationError(e)) { extensionContextAlive = false; stopAllAsyncWork(); }
+    else console.error("[RTL] Error saving data:", e);
+  }
 }
 
 async function getPageData(url) {
@@ -138,14 +184,33 @@ async function savePageData(pageData) {
   await saveAllData(data);
 }
 
+/**
+ * Returns true if the error is the known Chrome "context invalidated" error,
+ * which happens when the extension is reloaded while the content script runs.
+ */
+function isInvalidationError(e) {
+  return (
+    e instanceof Error &&
+    (
+      e.message.includes("Extension context invalidated") ||
+      e.message.includes("context invalidated") ||
+      e.message.includes("Cannot access chrome")
+    )
+  );
+}
+
 // ===== BADGE =====
 
 function updateBadge(count) {
+  if (!isContextAlive()) return;
   try { chrome.runtime.sendMessage({ type: "UPDATE_BADGE", count }); }
-  catch (e) { /* context invalidated after page reload */ }
+  catch (e) {
+    if (isInvalidationError(e)) { extensionContextAlive = false; stopAllAsyncWork(); }
+  }
 }
 
 async function updateBadgeFromStorage() {
+  if (!isContextAlive()) return;
   const url = getCurrentUrl();
   const pageData = await getPageData(url);
   updateBadge(pageData ? pageData.selectors.filter(s => s.enabled).length : 0);
@@ -169,11 +234,8 @@ function removeRTLFromElement(element) {
   element.removeAttribute("data-rtl-applied");
 }
 
-/**
- * Apply all enabled selectors for the current page.
- * Returns the number of elements actually styled this call.
- */
 async function applyAllEnabledSelectors() {
+  if (!isContextAlive()) return 0;
   const url = getCurrentUrl();
   const pageData = await getPageData(url);
   if (!pageData || !pageData.pageEnabled) return 0;
@@ -193,11 +255,8 @@ async function applyAllEnabledSelectors() {
   return applied;
 }
 
-/**
- * Count how many saved enabled selectors currently have at least one
- * matching element in the DOM.
- */
 async function countSelectorsInDom() {
+  if (!isContextAlive()) return 0;
   const url = getCurrentUrl();
   const pageData = await getPageData(url);
   if (!pageData) return 0;
@@ -217,15 +276,11 @@ let observer = null;
 function startObserver() {
   if (observer) observer.disconnect();
   observer = new MutationObserver(() => {
+    if (!isContextAlive()) return; // stop reacting after context invalidation
     clearTimeout(observerDebounceTimer);
     observerDebounceTimer = setTimeout(() => applyAllEnabledSelectors(), 150);
   });
   observer.observe(document.body, { childList: true, subtree: true });
-}
-
-function stopObserver() {
-  if (observer) { observer.disconnect(); observer = null; }
-  clearTimeout(observerDebounceTimer);
 }
 
 // ===== GUARD: skip our own UI elements =====
@@ -234,30 +289,14 @@ function isExtensionElement(el) {
   return !!el?.closest?.("#rtl-notification");
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// PAGE LOAD STATS NOTIFICATION
-//
-// Problem: on pages with dynamic content the DOM is empty at document_end.
-// Running querySelectorAll immediately gives 0 hits even for valid selectors,
-// producing a false "selectors may be outdated" warning.
-//
-// Solution:
-//   1. Show the stats notification immediately WITHOUT any "outdated" warning.
-//   2. In parallel, poll for up to MAX_WAIT_MS to see whether the enabled
-//      selectors eventually find elements in the DOM.
-//   3. Only after MAX_WAIT_MS, if STILL nothing is found, update the existing
-//      notification to show the "outdated" warning.
-//   4. If elements ARE found before the timeout, update the notification with
-//      the correct inDom count and no warning.
-//
-// The MutationObserver already handles applying RTL to late-appearing elements,
-// so the stats display is purely informational and safe to update lazily.
-// ─────────────────────────────────────────────────────────────────────────────
+// ===== PAGE LOAD STATS NOTIFICATION =====
 
-const STATS_POLL_INTERVAL_MS = 300;  // how often to recheck during the wait
-const STATS_MAX_WAIT_MS = 8000; // give up after 8 s (covers slow SPAs)
+const STATS_POLL_INTERVAL_MS = 300;
+const STATS_MAX_WAIT_MS = 8000;
 
 async function showPageLoadStats() {
+  if (!isContextAlive()) return;
+
   const url = getCurrentUrl();
   const pageData = await getPageData(url);
   if (!pageData || pageData.selectors.length === 0) return;
@@ -266,7 +305,6 @@ async function showPageLoadStats() {
   const enabled = pageData.selectors.filter(s => s.enabled).length;
   const disabled = total - enabled;
 
-  // ── Page disabled: show warning immediately, no polling needed ──
   if (!pageData.pageEnabled) {
     showPersistentNotification(
       `PAGE DISABLED — ${total} saved | ${enabled} enabled | ${disabled} disabled`,
@@ -276,28 +314,31 @@ async function showPageLoadStats() {
     return;
   }
 
-  // ── Page enabled: show initial stats without an "outdated" warning ──
-  // We use a placeholder inDom count from a quick synchronous check first.
   const initialInDom = await countSelectorsInDom();
-
   showPersistentNotification(
     buildStatsTitle(total, enabled, disabled, initialInDom),
-    null,   // no warning yet — we don't know if content is still loading
+    null,
     false
   );
 
-  // If content is already in the DOM, nothing more to do.
   if (initialInDom > 0 || enabled === 0) return;
 
-  // ── Dynamic page: poll until elements appear or timeout expires ──
+  // ── Poll until elements appear or the context dies or timeout expires ──
   const started = Date.now();
 
-  const poll = setInterval(async () => {
+  statsPollingInterval = setInterval(async () => {
+    // Stop immediately if the extension context was invalidated
+    if (!isContextAlive()) {
+      clearInterval(statsPollingInterval);
+      statsPollingInterval = null;
+      return;
+    }
+
     const inDom = await countSelectorsInDom();
 
     if (inDom > 0) {
-      // Elements found — update notification with correct count, no warning
-      clearInterval(poll);
+      clearInterval(statsPollingInterval);
+      statsPollingInterval = null;
       updateStatsNotification(
         buildStatsTitle(total, enabled, disabled, inDom),
         null,
@@ -307,15 +348,14 @@ async function showPageLoadStats() {
     }
 
     if (Date.now() - started >= STATS_MAX_WAIT_MS) {
-      // Timeout reached and still nothing — NOW show the outdated warning
-      clearInterval(poll);
+      clearInterval(statsPollingInterval);
+      statsPollingInterval = null;
       updateStatsNotification(
         buildStatsTitle(total, enabled, disabled, 0),
         "⚠️ No matching elements found — selectors may be outdated. Edit them in Options.",
         true
       );
     }
-    // else: keep polling silently
   }, STATS_POLL_INTERVAL_MS);
 }
 
@@ -323,25 +363,15 @@ function buildStatsTitle(total, enabled, disabled, inDom) {
   return `RTL Stats: ${total} saved | ${enabled} active | ${disabled} disabled | ${inDom} found in DOM`;
 }
 
-/**
- * Update the text of an already-visible persistent notification in-place,
- * so there is no flicker from removing and re-adding it.
- */
 function updateStatsNotification(title, subtitle, isWarning) {
   const n = document.getElementById("rtl-notification");
-  if (!n) {
-    // Notification was closed by the user — do not re-open it
-    return;
-  }
+  if (!n) return; // user closed it — respect that
 
-  // Update warning colour class
   n.classList.toggle("rtl-warning", isWarning);
 
-  // Update title text
   const titleEl = n.querySelector(".rtl-notification-title");
   if (titleEl) titleEl.textContent = title;
 
-  // Add, update, or remove the subtitle line
   let subEl = n.querySelector(".rtl-notification-subtitle");
   if (subtitle) {
     if (!subEl) {
@@ -429,6 +459,7 @@ function toggleSelectionMode() {
 // ===== DISABLE ALL FOR PAGE =====
 
 async function disableAllForCurrentPage() {
+  if (!isContextAlive()) return;
   const url = getCurrentUrl();
   const pageData = await getPageData(url);
   if (!pageData || pageData.selectors.length === 0) {
@@ -445,12 +476,12 @@ async function disableAllForCurrentPage() {
 // ===== TOGGLE RTL ON A SINGLE ELEMENT =====
 
 async function toggleRTLOnElement(element) {
+  if (!isContextAlive()) return null;
   if (!element || isExtensionElement(element)) return null;
 
   const url = getCurrentUrl();
 
   if (element.hasAttribute("data-rtl-applied")) {
-    // ── Remove ──
     let pageData = await getPageData(url);
     if (pageData) {
       const matching = pageData.selectors.find(s => {
@@ -470,7 +501,6 @@ async function toggleRTLOnElement(element) {
     return "removed";
 
   } else {
-    // ── Apply ──
     const selectorPath = generateSelectorPath(element);
     let pageData = await getPageData(url);
 
@@ -572,6 +602,7 @@ document.addEventListener("mouseout", (e) => {
 }, true);
 
 chrome.runtime.onMessage.addListener((message) => {
+  if (!isContextAlive()) return;
   if (message.type === "TOGGLE_SELECTION_MODE") toggleSelectionMode();
   if (message.type === "APPLY_RTL_CONTEXT_MENU") handleContextMenuRTL();
 });
@@ -579,6 +610,7 @@ chrome.runtime.onMessage.addListener((message) => {
 // ===== INIT =====
 
 async function init() {
+  if (!isContextAlive()) return;
   try { await applyAllEnabledSelectors(); } catch (e) { console.error("[RTL] applyAllEnabledSelectors:", e); }
   try { await showPageLoadStats(); } catch (e) { console.error("[RTL] showPageLoadStats:", e); }
   try { await updateBadgeFromStorage(); } catch (e) { console.error("[RTL] updateBadgeFromStorage:", e); }
