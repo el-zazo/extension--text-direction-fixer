@@ -106,6 +106,21 @@ async function loadAllData() {
     }
     return [];
 }
+
+// ===== SANITIZE: garantit IDs uniques dans toute la structure =====
+function sanitizeDataIds(pages) {
+    const seenIds = new Set();
+    return pages.map(page => ({
+        ...page,
+        selectors: page.selectors.map(sel => {
+            if (!sel.id || seenIds.has(sel.id)) {
+                return { ...sel, id: crypto.randomUUID() };
+            }
+            seenIds.add(sel.id);
+            return sel;
+        }),
+    }));
+}
 async function saveAllData(data) {
     await chrome.storage.local.set({ rtl_data: data });
 }
@@ -769,18 +784,55 @@ function validateImportPayload(parsed) {
 
 // ===== IMPORT — MERGE STRATEGIES =====
 
+/**
+ * Regenerate IDs for all selectors in incoming pages.
+ * This guarantees that imported selectors never share an ID
+ * with existing ones (even if the exported file was re-imported
+ * after editing a path — same ID, different path).
+ */
+function regenSelectorIds(pages) {
+    return pages.map(page => ({
+        ...page,
+        selectors: page.selectors.map(sel => ({
+            ...sel,
+            id: crypto.randomUUID(),
+        })),
+    }));
+}
+
+/**
+ * Deduplicate pages by URL — last one wins.
+ * Prevents duplicate URL entries in the final dataset.
+ */
+function deduplicateByUrl(pages) {
+    const seen = new Map();
+    for (const page of pages) {
+        seen.set(page.url, page);
+    }
+    return [...seen.values()];
+}
+
 function applyMergeStrategy(existing, incoming, strategy) {
-    if (strategy === "replace") return incoming;
+    // Always regenerate IDs for incoming selectors to avoid ID collisions
+    const safeIncoming = regenSelectorIds(incoming);
+
+    if (strategy === "replace") {
+        return deduplicateByUrl(safeIncoming);
+    }
 
     if (strategy === "skip") {
         const existingUrls = new Set(existing.map(p => p.url));
-        return [...existing, ...incoming.filter(p => !existingUrls.has(p.url))];
+        return deduplicateByUrl([
+            ...existing,
+            ...safeIncoming.filter(p => !existingUrls.has(p.url)),
+        ]);
     }
 
+    // strategy === "merge-keep" or "merge-update"
     const result = existing.map(p => ({ ...p, selectors: [...p.selectors] }));
     const urlIndex = new Map(result.map((p, i) => [p.url, i]));
 
-    for (const incomingPage of incoming) {
+    for (const incomingPage of safeIncoming) {
         if (!urlIndex.has(incomingPage.url)) {
             urlIndex.set(incomingPage.url, result.length);
             result.push({ ...incomingPage, selectors: [...incomingPage.selectors] });
@@ -790,6 +842,7 @@ function applyMergeStrategy(existing, incoming, strategy) {
         const idx = urlIndex.get(incomingPage.url);
         const oldPage = result[idx];
 
+        // Key by PATH (not ID) for conflict detection
         const oldByPath = new Map(oldPage.selectors.map(s => [s.path, s]));
         const newByPath = new Map(incomingPage.selectors.map(s => [s.path, s]));
         const allPaths = new Set([...oldByPath.keys(), ...newByPath.keys()]);
@@ -799,7 +852,7 @@ function applyMergeStrategy(existing, incoming, strategy) {
             const oldSel = oldByPath.get(path);
             const newSel = newByPath.get(path);
             if (oldSel && newSel) {
-                // Both sides have this path — pick winner based on strategy
+                // Conflict: both sides have this exact path
                 mergedSelectors.push(strategy === "merge-keep" ? oldSel : newSel);
             } else {
                 mergedSelectors.push(oldSel ?? newSel);
@@ -809,12 +862,14 @@ function applyMergeStrategy(existing, incoming, strategy) {
         result[idx] = strategy === "merge-keep"
             ? { ...oldPage, selectors: mergedSelectors }
             : {
-                ...oldPage, pageEnabled: incomingPage.pageEnabled,
+                ...oldPage,
+                pageEnabled: incomingPage.pageEnabled,
                 createdAt: incomingPage.createdAt ?? oldPage.createdAt,
-                selectors: mergedSelectors
+                selectors: mergedSelectors,
             };
     }
-    return result;
+
+    return deduplicateByUrl(result);
 }
 
 // ===== IMPORT — STRATEGY PICKER MODAL =====
@@ -958,7 +1013,8 @@ importFile.addEventListener("change", async (e) => {
     const strategy = await showStrategyModal({ incomingPages, incomingSelectors, duplicateUrls });
     if (!strategy) return;
 
-    await saveAllData(applyMergeStrategy(existing, parsed.rtl_data, strategy));
+    const merged = applyMergeStrategy(existing, parsed.rtl_data, strategy);
+    await saveAllData(sanitizeDataIds(merged));
     await loadAndRenderPages();
 
     const labels = {
