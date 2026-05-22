@@ -1,5 +1,5 @@
 // ============================================
-// Text Direction Fixer - Content Script v3.0
+// Text Direction Fixer - Content Script v3.4
 // ============================================
 
 // ===== STATE =====

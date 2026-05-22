@@ -1,6 +1,6 @@
 // ============================================
 // Text Direction Fixer — Options Dashboard JS
-// v3.3 — deep import validation + merge strategies
+// v3.4
 // ============================================
 
 // ===== DOM REFS =====
@@ -25,6 +25,7 @@ const backBtn = document.getElementById("backBtn");
 const selectorViewTitle = document.getElementById("selectorViewTitle");
 const selectorViewUrl = document.getElementById("selectorViewUrl");
 const pageToggleMain = document.getElementById("pageToggleMain");
+const openPageBtn = document.getElementById("openPageBtn");
 const deletePageBtn = document.getElementById("deletePageBtn");
 const selectorSearch = document.getElementById("selectorSearch");
 const selectorSearchClear = document.getElementById("selectorSearchClear");
@@ -62,6 +63,22 @@ const _escEl = document.createElement("div");
 function escapeHtml(str) {
     _escEl.textContent = str;
     return _escEl.innerHTML;
+}
+
+// ===== DATE FORMATTING — date + time =====
+function formatDateTime(iso) {
+    if (!iso) return "—";
+    try {
+        const d = new Date(iso);
+        if (isNaN(d.getTime())) return iso;
+        return d.toLocaleString(undefined, {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+        });
+    } catch { return iso; }
 }
 
 // ===== THEME =====
@@ -131,7 +148,7 @@ function showToast(message, type = "info", duration = 2800) {
     }, duration);
 }
 
-// ===== MODAL (base) =====
+// ===== MODAL =====
 let _modalResolve = null;
 
 function showModal({ icon = "", title = "", message = "", buttons = [], inputValue, bodyHtml } = {}) {
@@ -140,7 +157,6 @@ function showModal({ icon = "", title = "", message = "", buttons = [], inputVal
         modalIcon.textContent = icon;
         modalTitle.textContent = title;
 
-        // Support either plain text OR raw HTML for the message area
         if (bodyHtml !== undefined) {
             modalMessage.innerHTML = bodyHtml;
         } else {
@@ -172,7 +188,6 @@ function showModal({ icon = "", title = "", message = "", buttons = [], inputVal
 
 function closeModal(value = null) {
     modalOverlay.classList.remove("open");
-    // Clear any injected HTML so it can't bleed into the next modal
     modalMessage.innerHTML = "";
     if (_modalResolve) { _modalResolve(value); _modalResolve = null; }
 }
@@ -190,9 +205,10 @@ modalInput.addEventListener("keydown", (e) => {
     }
 });
 
-// Confirm helper
-async function confirmModal({ icon = "", title = "", message = "",
-    confirmLabel = "Confirm", confirmStyle = "btn-danger" } = {}) {
+async function confirmModal({
+    icon = "", title = "", message = "",
+    confirmLabel = "Confirm", confirmStyle = "btn-danger"
+} = {}) {
     const result = await showModal({
         icon, title, message,
         buttons: [
@@ -203,16 +219,7 @@ async function confirmModal({ icon = "", title = "", message = "",
     return result === "confirm";
 }
 
-// ===== UTILITIES =====
-function formatDate(iso) {
-    if (!iso) return "—";
-    try {
-        return new Date(iso).toLocaleDateString(undefined, {
-            month: "short", day: "numeric", year: "numeric"
-        });
-    } catch { return iso; }
-}
-
+// ===== URL HELPERS =====
 function parseUrl(rawUrl) {
     try {
         const u = new URL(rawUrl);
@@ -268,12 +275,15 @@ function renderPages(allData) {
     pagesList.innerHTML = pages.map(page => {
         const { domain, path } = parseUrl(page.url);
         const faviconUrl = getFaviconUrl(page.url);
-        const total = page.selectors.length;
+        const totalSel = page.selectors.length;
         const on = page.selectors.filter(s => s.enabled).length;
-        const off = total - on;
+        const off = totalSel - on;
+        const created = formatDateTime(page.createdAt);
 
         return `
       <div class="page-card ${page.pageEnabled ? "" : "page-inactive"}">
+
+        <!-- ── Clickable navigation zone ── -->
         <div class="page-card-link"
              data-url="${escapeHtml(page.url)}"
              role="button" tabindex="0"
@@ -287,14 +297,17 @@ function renderPages(allData) {
           <div class="page-info">
             <div class="page-domain">${escapeHtml(domain)}</div>
             ${path ? `<div class="page-path">${escapeHtml(path)}</div>` : ""}
+            <div class="page-created">Added ${escapeHtml(created)}</div>
           </div>
           <span class="page-arrow">→</span>
         </div>
+
+        <!-- ── Bottom row: counts + actions ── -->
         <div class="page-card-bottom">
           <div class="page-selector-counts">
             <span class="count-item">
               <span class="count-dot total"></span>
-              <span class="count-num">${total}</span>&thinsp;total
+              <span class="count-num">${totalSel}</span>&thinsp;total
             </span>
             <span class="count-item">
               <span class="count-dot enabled"></span>
@@ -305,14 +318,38 @@ function renderPages(allData) {
               <span class="count-num">${off}</span>&thinsp;off
             </span>
           </div>
-          <label class="toggle-wrap sm" title="Enable / disable page">
-            <input type="checkbox"
-                   class="toggle-input page-toggle-cb"
-                   data-url="${escapeHtml(page.url)}"
-                   ${page.pageEnabled ? "checked" : ""}>
-            <span class="toggle-track"><span class="toggle-thumb"></span></span>
-          </label>
+          <div class="page-card-actions">
+            <!-- Open in new tab -->
+            <button class="action-btn page-open-btn"
+                    data-url="${escapeHtml(page.url)}"
+                    title="Open page in new tab">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                <polyline points="15 3 21 3 21 9"/>
+                <line x1="10" y1="14" x2="21" y2="3"/>
+              </svg>
+            </button>
+            <!-- Delete page -->
+            <button class="action-btn danger page-delete-btn"
+                    data-url="${escapeHtml(page.url)}"
+                    title="Delete this page">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="3 6 5 6 21 6"/>
+                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                <path d="M10 11v6M14 11v6"/>
+              </svg>
+            </button>
+            <!-- Toggle -->
+            <label class="toggle-wrap sm" title="Enable / disable page">
+              <input type="checkbox"
+                     class="toggle-input page-toggle-cb"
+                     data-url="${escapeHtml(page.url)}"
+                     ${page.pageEnabled ? "checked" : ""}>
+              <span class="toggle-track"><span class="toggle-thumb"></span></span>
+            </label>
+          </div>
         </div>
+
       </div>
     `;
     }).join("");
@@ -371,16 +408,16 @@ function renderSelectors(page) {
                   spellcheck="false"
                   title="Click to edit">${escapeHtml(sel.path)}</textarea>
       </td>
-      <td class="td-date">${formatDate(sel.createdAt)}</td>
+      <td class="td-date">${escapeHtml(formatDateTime(sel.createdAt))}</td>
       <td>
         <div class="td-actions">
-          <button class="action-btn sel-edit-btn" data-id="${sel.id}" title="Edit">
+          <button class="action-btn sel-edit-btn" data-id="${sel.id}" title="Edit selector">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
               <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
             </svg>
           </button>
-          <button class="action-btn danger sel-delete-btn" data-id="${sel.id}" title="Delete">
+          <button class="action-btn danger sel-delete-btn" data-id="${sel.id}" title="Delete selector">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="3 6 5 6 21 6"/>
               <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
@@ -411,6 +448,7 @@ async function openSelectorsView(url) {
     selectorViewTitle.textContent = parseUrl(url).domain;
     selectorViewUrl.textContent = url;
     pageToggleMain.checked = page.pageEnabled;
+    openPageBtn.dataset.url = url;
 
     selectorSearch.value = "";
     selectorSearchClear.style.display = "none";
@@ -431,9 +469,42 @@ backBtn.addEventListener("click", () => {
     loadAndRenderPages();
 });
 
+// Open page in new tab — selectors view header button
+openPageBtn.addEventListener("click", () => {
+    const url = openPageBtn.dataset.url;
+    if (url) chrome.tabs.create({ url, active: true });
+});
+
 // ===== PAGES GRID — EVENTS =====
 
 pagesList.addEventListener("click", async (e) => {
+    // ── Open in new tab ──
+    const openBtn = e.target.closest(".page-open-btn");
+    if (openBtn) {
+        chrome.tabs.create({ url: openBtn.dataset.url, active: true });
+        return;
+    }
+
+    // ── Delete page directly from card ──
+    const delBtn = e.target.closest(".page-delete-btn");
+    if (delBtn) {
+        const url = delBtn.dataset.url;
+        const confirmed = await confirmModal({
+            icon: "🗑️",
+            title: "Delete Page",
+            message: `Delete all RTL data for:\n${url}\n\nThis cannot be undone.`,
+            confirmLabel: "Delete Page"
+        });
+        if (!confirmed) return;
+
+        const allData = await loadAllData();
+        await saveAllData(allData.filter(p => p.url !== url));
+        await loadAndRenderPages();
+        showToast("Page deleted", "success");
+        return;
+    }
+
+    // ── Navigate to selectors ──
     const link = e.target.closest(".page-card-link");
     if (link?.dataset.url) {
         await openSelectorsView(link.dataset.url);
@@ -446,6 +517,7 @@ pagesList.addEventListener("keydown", async (e) => {
     if (link?.dataset.url) { e.preventDefault(); await openSelectorsView(link.dataset.url); }
 });
 
+// Toggle page enabled — change event only (no double-fire)
 pagesList.addEventListener("change", async (e) => {
     const cb = e.target.closest(".page-toggle-cb");
     if (!cb) return;
@@ -461,6 +533,7 @@ pagesList.addEventListener("change", async (e) => {
 
 // ===== SELECTORS TABLE — EVENTS =====
 
+// Toggle — change only
 selectorsTbody.addEventListener("change", async (e) => {
     const cb = e.target.closest(".sel-toggle-cb");
     if (!cb || !currentPageUrl) return;
@@ -478,6 +551,7 @@ selectorsTbody.addEventListener("change", async (e) => {
     showToast(cb.checked ? "Selector enabled" : "Selector disabled", "info");
 });
 
+// Edit / Delete
 selectorsTbody.addEventListener("click", async (e) => {
     const editBtn = e.target.closest(".sel-edit-btn");
     if (editBtn) {
@@ -518,6 +592,7 @@ selectorsTbody.addEventListener("click", async (e) => {
     }
 });
 
+// Inline textarea editing
 selectorsTbody.addEventListener("focusin", (e) => {
     const ta = e.target.closest(".td-path-editable");
     if (ta) autoResizeTextarea(ta);
@@ -612,7 +687,6 @@ pageSearch.addEventListener("input", () => {
 pageSearchClear.addEventListener("click", () => {
     pageSearch.value = ""; pageSearchClear.style.display = "none"; loadAndRenderPages();
 });
-
 selectorSearch.addEventListener("input", () => {
     selectorSearchClear.style.display = selectorSearch.value ? "" : "none";
     refreshSelectorsView();
@@ -642,49 +716,26 @@ exportBtn.addEventListener("click", async () => {
 
 // ===== IMPORT — DEEP VALIDATION =====
 
-/**
- * Validate a single selector object.
- * Returns an array of error strings (empty = valid).
- */
 function validateSelector(sel, index) {
     const errors = [];
     const ctx = `Selector #${index + 1}`;
 
     if (typeof sel !== "object" || sel === null || Array.isArray(sel)) {
         errors.push(`${ctx}: must be an object`);
-        return errors; // no point checking further
+        return errors;
     }
-
-    // id — must be a non-empty string
-    if (typeof sel.id !== "string" || sel.id.trim() === "") {
+    if (typeof sel.id !== "string" || sel.id.trim() === "")
         errors.push(`${ctx}: "id" must be a non-empty string`);
-    }
-
-    // path — must be a non-empty string
-    if (typeof sel.path !== "string" || sel.path.trim() === "") {
+    if (typeof sel.path !== "string" || sel.path.trim() === "")
         errors.push(`${ctx}: "path" must be a non-empty string`);
-    }
-
-    // enabled — must be a boolean
-    if (typeof sel.enabled !== "boolean") {
-        errors.push(`${ctx}: "enabled" must be a boolean (true/false)`);
-    }
-
-    // createdAt — optional but if present must be parseable
-    if (sel.createdAt !== undefined) {
-        const d = new Date(sel.createdAt);
-        if (isNaN(d.getTime())) {
-            errors.push(`${ctx}: "createdAt" is not a valid date string`);
-        }
-    }
+    if (typeof sel.enabled !== "boolean")
+        errors.push(`${ctx}: "enabled" must be true or false`);
+    if (sel.createdAt !== undefined && isNaN(new Date(sel.createdAt).getTime()))
+        errors.push(`${ctx}: "createdAt" is not a valid date`);
 
     return errors;
 }
 
-/**
- * Validate a single page object.
- * Returns an array of error strings (empty = valid).
- */
 function validatePage(page, index) {
     const errors = [];
     const ctx = `Page #${index + 1}`;
@@ -693,94 +744,57 @@ function validatePage(page, index) {
         errors.push(`${ctx}: must be an object`);
         return errors;
     }
-
-    // url — must be a non-empty string and a parseable URL
     if (typeof page.url !== "string" || page.url.trim() === "") {
         errors.push(`${ctx}: "url" must be a non-empty string`);
     } else {
         try { new URL(page.url); }
         catch { errors.push(`${ctx}: "url" is not a valid URL ("${page.url}")`); }
     }
-
-    // pageEnabled — must be a boolean
-    if (typeof page.pageEnabled !== "boolean") {
-        errors.push(`${ctx} (${page.url ?? "?"}): "pageEnabled" must be a boolean`);
-    }
-
-    // createdAt — optional but if present must be parseable
-    if (page.createdAt !== undefined) {
-        const d = new Date(page.createdAt);
-        if (isNaN(d.getTime())) {
-            errors.push(`${ctx} (${page.url ?? "?"}): "createdAt" is not a valid date string`);
-        }
-    }
-
-    // selectors — must be an array
+    if (typeof page.pageEnabled !== "boolean")
+        errors.push(`${ctx} (${page.url ?? "?"}): "pageEnabled" must be true or false`);
+    if (page.createdAt !== undefined && isNaN(new Date(page.createdAt).getTime()))
+        errors.push(`${ctx} (${page.url ?? "?"}): "createdAt" is not a valid date`);
     if (!Array.isArray(page.selectors)) {
         errors.push(`${ctx} (${page.url ?? "?"}): "selectors" must be an array`);
     } else {
-        // Validate each selector — collect first error per selector only
         page.selectors.forEach((sel, si) => {
-            const selErrors = validateSelector(sel, si);
-            errors.push(...selErrors.slice(0, 1)); // one error per selector keeps the list manageable
+            const se = validateSelector(sel, si);
+            if (se.length) errors.push(se[0]); // one error per selector
         });
     }
-
     return errors;
 }
 
-/**
- * Fully validate a parsed JSON object.
- * Returns { ok: true } or { ok: false, errors: string[] }
- */
 function validateImportPayload(parsed) {
     const errors = [];
 
-    // Top-level structure
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed))
         return { ok: false, errors: ["File must contain a JSON object at the top level"] };
-    }
-
-    if (!Object.prototype.hasOwnProperty.call(parsed, "rtl_data")) {
+    if (!Object.prototype.hasOwnProperty.call(parsed, "rtl_data"))
         return { ok: false, errors: ['Missing top-level key "rtl_data"'] };
-    }
-
-    if (!Array.isArray(parsed.rtl_data)) {
+    if (!Array.isArray(parsed.rtl_data))
         return { ok: false, errors: ['"rtl_data" must be an array'] };
-    }
-
-    if (parsed.rtl_data.length === 0) {
-        // Empty array is technically valid — we'll warn but not block
+    if (parsed.rtl_data.length === 0)
         return { ok: true, warnings: ["The file contains no pages (empty array)"] };
-    }
 
-    // Validate each page — stop collecting after 10 errors to keep the UI readable
     for (let i = 0; i < parsed.rtl_data.length; i++) {
-        const pageErrors = validatePage(parsed.rtl_data[i], i);
-        errors.push(...pageErrors);
-        if (errors.length >= 10) {
-            errors.push(`… and more errors (only first 10 shown)`);
-            break;
-        }
+        errors.push(...validatePage(parsed.rtl_data[i], i));
+        if (errors.length >= 10) { errors.push("… and more errors (first 10 shown)"); break; }
     }
 
-    return errors.length === 0
-        ? { ok: true }
-        : { ok: false, errors };
+    return errors.length === 0 ? { ok: true } : { ok: false, errors };
 }
 
 // ===== IMPORT — MERGE STRATEGIES =====
 
 /**
- * Apply a merge strategy to combine existing data with incoming data.
+ * merge-keep:   selectors combined; on path conflict OLD selector wins entirely
+ * merge-update: selectors combined; on path conflict NEW selector wins entirely
  *
- * Strategies:
- *  "replace"      — discard everything, use incoming data as-is
- *  "merge-keep"   — for duplicate URLs: merge selectors (dedup by path),
- *                   keep OLD page-level meta (pageEnabled, createdAt)
- *  "merge-update" — for duplicate URLs: merge selectors (dedup by path),
- *                   use NEW page-level meta (pageEnabled, createdAt)
- *  "skip"         — only add pages whose URL does not already exist
+ * "Wins entirely" means the whole selector object (id, enabled, createdAt, path)
+ * is taken from the winner — not a field-level merge. This is the correct
+ * behaviour because `enabled` is the most important field and must come from
+ * the winner consistently.
  */
 function applyMergeStrategy(existing, incoming, strategy) {
     if (strategy === "replace") {
@@ -789,45 +803,56 @@ function applyMergeStrategy(existing, incoming, strategy) {
 
     if (strategy === "skip") {
         const existingUrls = new Set(existing.map(p => p.url));
-        const newPages = incoming.filter(p => !existingUrls.has(p.url));
-        return [...existing, ...newPages];
+        return [...existing, ...incoming.filter(p => !existingUrls.has(p.url))];
     }
 
-    // "merge-keep" or "merge-update"
+    // Deep-clone existing so we never mutate the original array
     const result = existing.map(p => ({ ...p, selectors: [...p.selectors] }));
     const urlIndex = new Map(result.map((p, i) => [p.url, i]));
 
     for (const incomingPage of incoming) {
-        if (urlIndex.has(incomingPage.url)) {
-            const idx = urlIndex.get(incomingPage.url);
-            const oldPage = result[idx];
+        if (!urlIndex.has(incomingPage.url)) {
+            // Brand-new URL — always add
+            urlIndex.set(incomingPage.url, result.length);
+            result.push({ ...incomingPage, selectors: [...incomingPage.selectors] });
+            continue;
+        }
 
-            // Merge selectors: deduplicate by path, old selectors take priority for matching paths
-            const pathsSeen = new Map(oldPage.selectors.map(s => [s.path, s]));
-            for (const newSel of incomingPage.selectors) {
-                if (!pathsSeen.has(newSel.path)) {
-                    pathsSeen.set(newSel.path, newSel);
-                }
-                // If path already exists we keep the old selector as-is
-            }
-            const mergedSelectors = [...pathsSeen.values()];
+        const idx = urlIndex.get(incomingPage.url);
+        const oldPage = result[idx];
 
-            if (strategy === "merge-keep") {
-                // Keep old page-level meta
-                result[idx] = { ...oldPage, selectors: mergedSelectors };
+        // Build a path → selector map for each side
+        const oldByPath = new Map(oldPage.selectors.map(s => [s.path, s]));
+        const newByPath = new Map(incomingPage.selectors.map(s => [s.path, s]));
+
+        // Union of all paths
+        const allPaths = new Set([...oldByPath.keys(), ...newByPath.keys()]);
+
+        const mergedSelectors = [];
+        for (const path of allPaths) {
+            const oldSel = oldByPath.get(path);
+            const newSel = newByPath.get(path);
+
+            if (oldSel && newSel) {
+                // Conflict: pick winner based on strategy
+                mergedSelectors.push(strategy === "merge-keep" ? oldSel : newSel);
             } else {
-                // "merge-update" — use new page-level meta but merged selectors
-                result[idx] = {
-                    ...oldPage,               // keep as base
-                    pageEnabled: incomingPage.pageEnabled ?? oldPage.pageEnabled,
-                    createdAt: incomingPage.createdAt ?? oldPage.createdAt,
-                    selectors: mergedSelectors,
-                };
+                // Only one side has this path — always include it
+                mergedSelectors.push(oldSel ?? newSel);
             }
+        }
+
+        if (strategy === "merge-keep") {
+            // Keep old page-level meta (pageEnabled, createdAt)
+            result[idx] = { ...oldPage, selectors: mergedSelectors };
         } else {
-            // Brand-new URL — always add it
-            result.push(incomingPage);
-            urlIndex.set(incomingPage.url, result.length - 1);
+            // merge-update: use new page-level meta
+            result[idx] = {
+                ...oldPage,
+                pageEnabled: incomingPage.pageEnabled,
+                createdAt: incomingPage.createdAt ?? oldPage.createdAt,
+                selectors: mergedSelectors,
+            };
         }
     }
 
@@ -836,10 +861,6 @@ function applyMergeStrategy(existing, incoming, strategy) {
 
 // ===== IMPORT — STRATEGY PICKER MODAL =====
 
-/**
- * Show a custom modal that lets the user pick one of the 4 import strategies.
- * Returns the chosen strategy string, or null if cancelled.
- */
 function showStrategyModal(stats) {
     return new Promise((resolve) => {
         _modalResolve = resolve;
@@ -847,19 +868,21 @@ function showStrategyModal(stats) {
         modalIcon.textContent = "📥";
         modalTitle.textContent = "Choose Import Strategy";
 
-        // Build the rich body
         modalMessage.innerHTML = `
       <div class="import-stats">
         <span class="import-stat">
-          <strong>${stats.incomingPages}</strong> page${stats.incomingPages !== 1 ? "s" : ""}
+          <strong>${stats.incomingPages}</strong>
+          page${stats.incomingPages !== 1 ? "s" : ""}
         </span>
         <span class="import-stat-sep">·</span>
         <span class="import-stat">
-          <strong>${stats.incomingSelectors}</strong> selector${stats.incomingSelectors !== 1 ? "s" : ""}
+          <strong>${stats.incomingSelectors}</strong>
+          selector${stats.incomingSelectors !== 1 ? "s" : ""}
         </span>
         <span class="import-stat-sep">·</span>
         <span class="import-stat">
-          <strong>${stats.duplicateUrls}</strong> duplicate URL${stats.duplicateUrls !== 1 ? "s" : ""}
+          <strong>${stats.duplicateUrls}</strong>
+          duplicate URL${stats.duplicateUrls !== 1 ? "s" : ""}
         </span>
       </div>
       <p class="import-desc">How should the imported data be combined with your existing data?</p>
@@ -867,33 +890,32 @@ function showStrategyModal(stats) {
 
         modalInputWrap.style.display = "none";
 
-        // Build strategy option buttons
         const strategies = [
             {
                 value: "replace",
                 label: "Replace All",
-                sublabel: "Discard current data, use imported data only",
+                sublabel: "Discard current data entirely, use imported data only",
                 icon: "🔄",
                 style: "strategy-btn strategy-danger",
             },
             {
                 value: "merge-keep",
                 label: "Merge — Keep existing info",
-                sublabel: "Combine selectors. For duplicate pages, keep current page settings",
+                sublabel: "Combine selectors. Conflicts: keep current selector & page settings",
                 icon: "🔀",
                 style: "strategy-btn",
             },
             {
                 value: "merge-update",
                 label: "Merge — Use imported info",
-                sublabel: "Combine selectors. For duplicate pages, use imported page settings",
+                sublabel: "Combine selectors. Conflicts: use imported selector & page settings",
                 icon: "🔁",
                 style: "strategy-btn",
             },
             {
                 value: "skip",
                 label: "Skip Duplicates",
-                sublabel: "Only add pages that don't already exist",
+                sublabel: "Only add pages whose URL does not already exist",
                 icon: "⏭️",
                 style: "strategy-btn",
             },
@@ -914,11 +936,11 @@ function showStrategyModal(stats) {
       <button class="btn btn-ghost btn-sm strategy-cancel">Cancel</button>
     `;
 
-        // Wire buttons
-        modalActions.querySelectorAll("[data-strategy]").forEach(btn => {
-            btn.addEventListener("click", () => closeModal(btn.dataset.strategy));
-        });
-        modalActions.querySelector(".strategy-cancel").addEventListener("click", () => closeModal(null));
+        modalActions.querySelectorAll("[data-strategy]").forEach(btn =>
+            btn.addEventListener("click", () => closeModal(btn.dataset.strategy))
+        );
+        modalActions.querySelector(".strategy-cancel")
+            .addEventListener("click", () => closeModal(null));
 
         modalOverlay.classList.add("open");
         setTimeout(() => modalActions.querySelector(".strategy-btn")?.focus(), 120);
@@ -932,9 +954,9 @@ importBtn.addEventListener("click", () => importFile.click());
 importFile.addEventListener("change", async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    importFile.value = ""; // reset so same file can be re-picked
+    importFile.value = "";
 
-    // ── Step 1: parse JSON ──
+    // Step 1 — parse JSON
     let parsed;
     try {
         parsed = JSON.parse(await file.text());
@@ -947,11 +969,10 @@ importFile.addEventListener("change", async (e) => {
         return;
     }
 
-    // ── Step 2: deep validate ──
+    // Step 2 — deep validate
     const { ok, errors, warnings } = validateImportPayload(parsed);
 
     if (!ok) {
-        // Show all validation errors (max 10 already capped inside validator)
         const errorList = errors.map(e => `• ${e}`).join("\n");
         await showModal({
             icon: "⚠️", title: "Validation Failed",
@@ -961,7 +982,6 @@ importFile.addEventListener("change", async (e) => {
         return;
     }
 
-    // Non-blocking warning (e.g. empty array)
     if (warnings?.length) {
         const cont = await confirmModal({
             icon: "ℹ️", title: "Import Warning",
@@ -971,29 +991,29 @@ importFile.addEventListener("change", async (e) => {
         if (!cont) return;
     }
 
-    // ── Step 3: compute stats for the strategy picker ──
+    // Step 3 — compute stats
     const existing = await loadAllData();
     const existingUrls = new Set(existing.map(p => p.url));
     const incomingPages = parsed.rtl_data.length;
     const incomingSelectors = parsed.rtl_data.reduce((n, p) => n + p.selectors.length, 0);
     const duplicateUrls = parsed.rtl_data.filter(p => existingUrls.has(p.url)).length;
 
-    // ── Step 4: let the user pick a strategy ──
+    // Step 4 — pick strategy
     const strategy = await showStrategyModal({ incomingPages, incomingSelectors, duplicateUrls });
-    if (!strategy) return; // user cancelled
+    if (!strategy) return;
 
-    // ── Step 5: apply and save ──
+    // Step 5 — apply and save
     const merged = applyMergeStrategy(existing, parsed.rtl_data, strategy);
     await saveAllData(merged);
     await loadAndRenderPages();
 
-    const strategyLabels = {
-        "replace": "Replaced all data",
-        "merge-keep": "Merged (kept existing page info)",
-        "merge-update": "Merged (used imported page info)",
-        "skip": "Imported new pages only (duplicates skipped)",
+    const labels = {
+        "replace": "Replaced all data with imported file",
+        "merge-keep": "Merged — existing info kept for conflicts",
+        "merge-update": "Merged — imported info used for conflicts",
+        "skip": "New pages imported, duplicates skipped",
     };
-    showToast(`✓ ${strategyLabels[strategy]}`, "success", 3500);
+    showToast(labels[strategy], "success", 3500);
 });
 
 // ===== CLEAR ALL =====

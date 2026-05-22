@@ -1,6 +1,6 @@
 /* ============================================
    Text Direction Fixer — Options Dashboard CSS
-   Premium Modern Design v3.3
+   v3.4
    ============================================ */
 
 /* ===== DESIGN TOKENS ===== */
@@ -372,32 +372,24 @@ body {
 
 .page-card.page-inactive { opacity: 0.6; }
 
-/* Clickable navigation zone */
+/* ── Clickable navigation zone ── */
 .page-card-link {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 18px 20px 14px;
+  padding: 16px 18px 12px;
   cursor: pointer;
-  text-decoration: none;
-  color: inherit;
   transition: background var(--transition);
-  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   outline: none;
 }
 .page-card-link:hover,
-.page-card-link:focus-visible {
-  background: var(--surface-hover);
-}
+.page-card-link:focus-visible { background: var(--surface-hover); }
 .page-card-link:hover .page-domain,
-.page-card-link:focus-visible .page-domain {
-  color: var(--brand-hover);
-}
+.page-card-link:focus-visible .page-domain { color: var(--brand-hover); }
 .page-card-link:hover .page-arrow,
-.page-card-link:focus-visible .page-arrow {
-  transform: translateX(4px);
-  color: var(--brand);
-}
+.page-card-link:focus-visible .page-arrow { transform: translateX(4px); color: var(--brand); }
+
+/* Lift entire card border only when the nav zone is hovered */
 .page-card:has(.page-card-link:hover),
 .page-card:has(.page-card-link:focus-visible) {
   border-color: var(--brand);
@@ -405,19 +397,19 @@ body {
 }
 
 .page-favicon {
-  width: 36px;
-  height: 36px;
+  width: 34px;
+  height: 34px;
   border-radius: var(--radius-sm);
   background: var(--brand-muted);
   border: 1px solid var(--border);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 16px;
+  font-size: 15px;
   flex-shrink: 0;
   overflow: hidden;
 }
-.page-favicon img { width: 20px; height: 20px; object-fit: contain; }
+.page-favicon img { width: 18px; height: 18px; object-fit: contain; }
 
 .page-info { flex: 1; min-width: 0; }
 
@@ -437,8 +429,18 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  margin-top: 2px;
+  margin-top: 1px;
   font-family: "SF Mono", "Fira Code", monospace;
+}
+
+/* Creation date line — new */
+.page-created {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin-top: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .page-arrow {
@@ -449,22 +451,27 @@ body {
   transition: transform var(--transition), color var(--transition);
 }
 
-/* Bottom row: counts + toggle */
+/* ── Bottom row: counts + action buttons + toggle ── */
 .page-card-bottom {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 20px 14px;
+  padding: 8px 14px 10px;
   border-top: 1px solid var(--border);
+  gap: 8px;
 }
 
-.page-selector-counts { display: flex; gap: 12px; }
+.page-selector-counts {
+  display: flex;
+  gap: 10px;
+  flex-shrink: 0;
+}
 
 .count-item {
   display: flex;
   align-items: center;
-  gap: 5px;
-  font-size: 12px;
+  gap: 4px;
+  font-size: 11px;
   color: var(--text-secondary);
 }
 
@@ -478,7 +485,15 @@ body {
 .count-dot.enabled  { background: var(--dot-enabled); }
 .count-dot.disabled { background: var(--dot-disabled); }
 
-.count-num { font-weight: 600; color: var(--text-primary); font-size: 13px; }
+.count-num { font-weight: 600; color: var(--text-primary); font-size: 12px; }
+
+/* Actions group in the card bottom row */
+.page-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
 
 /* ===== TOGGLE ===== */
 .toggle-wrap {
@@ -522,9 +537,9 @@ body {
 
 .toggle-input:checked + .toggle-track { background: var(--success); border-color: var(--success); }
 .toggle-input:checked + .toggle-track .toggle-thumb { transform: translateX(16px); background: #fff; }
-
 .toggle-label { font-size: 13px; font-weight: 500; color: var(--text-secondary); }
 
+/* Small toggle variant */
 .toggle-wrap.sm .toggle-track { width: 30px; height: 17px; }
 .toggle-wrap.sm .toggle-thumb { width: 11px; height: 11px; }
 .toggle-wrap.sm .toggle-input:checked + .toggle-track .toggle-thumb { transform: translateX(13px); }
@@ -553,7 +568,7 @@ body {
 
 .col-status  { width: 72px; }
 .col-path    { min-width: 180px; }
-.col-date    { width: 140px; }
+.col-date    { width: 160px; }  /* slightly wider to fit date + time */
 .col-actions { width: 100px; text-align: right; }
 
 .selectors-table tbody tr {
@@ -599,7 +614,12 @@ body {
   cursor: text;
 }
 
-.td-date { font-size: 12px; color: var(--text-secondary); white-space: nowrap; }
+.td-date {
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  line-height: 1.4;
+}
 
 .td-actions { display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
 
@@ -642,6 +662,7 @@ body {
 .btn-danger { background: var(--danger); color: #fff; }
 .btn-danger:hover { background: var(--danger-hover); }
 
+/* Small icon-only action button — used inside the card bottom row and table */
 .action-btn {
   width: 28px;
   height: 28px;
@@ -706,7 +727,14 @@ body {
 
 .modal-icon    { font-size: 36px; margin-bottom: 12px; line-height: 1; }
 .modal-title   { font-size: 17px; font-weight: 700; color: var(--text-primary); margin-bottom: 8px; }
-.modal-message { font-size: 13px; color: var(--text-secondary); line-height: 1.6; margin-bottom: 20px; white-space: pre-wrap; text-align: left; }
+.modal-message {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin-bottom: 20px;
+  white-space: pre-wrap;
+  text-align: left;
+}
 
 .modal-input-wrap { margin-bottom: 20px; }
 
@@ -728,8 +756,6 @@ body {
 .modal-actions .btn { min-width: 100px; }
 
 /* ===== IMPORT STRATEGY MODAL ===== */
-
-/* Stats summary row */
 .import-stats {
   display: flex;
   align-items: center;
@@ -743,30 +769,18 @@ body {
   border-radius: var(--radius);
 }
 
-.import-stat {
-  font-size: 13px;
-  color: var(--text-secondary);
-}
-
-.import-stat strong {
-  color: var(--text-primary);
-  font-weight: 700;
-}
-
-.import-stat-sep {
-  color: var(--text-tertiary);
-  font-size: 11px;
-}
+.import-stat { font-size: 13px; color: var(--text-secondary); }
+.import-stat strong { color: var(--text-primary); font-weight: 700; }
+.import-stat-sep { color: var(--text-tertiary); font-size: 11px; }
 
 .import-desc {
   font-size: 13px;
   color: var(--text-secondary);
-  margin-bottom: 0;
   text-align: center;
   white-space: normal;
+  margin-bottom: 0;
 }
 
-/* Strategy list */
 .strategy-list {
   display: flex;
   flex-direction: column;
@@ -775,7 +789,6 @@ body {
   margin-bottom: 10px;
 }
 
-/* Each strategy option */
 .strategy-btn {
   display: flex;
   align-items: center;
@@ -790,7 +803,6 @@ body {
   width: 100%;
   outline: none;
 }
-
 .strategy-btn:hover,
 .strategy-btn:focus-visible {
   border-color: var(--brand);
@@ -798,13 +810,9 @@ body {
   box-shadow: 0 0 0 1px var(--brand);
   transform: translateY(-1px);
 }
-
 .strategy-btn:active { transform: translateY(0); }
 
-/* Danger variant for "Replace All" */
-.strategy-btn.strategy-danger {
-  border-color: rgba(239, 68, 68, 0.25);
-}
+.strategy-btn.strategy-danger { border-color: rgba(239, 68, 68, 0.25); }
 .strategy-btn.strategy-danger:hover,
 .strategy-btn.strategy-danger:focus-visible {
   border-color: var(--danger);
@@ -812,40 +820,13 @@ body {
   box-shadow: 0 0 0 1px var(--danger);
 }
 
-.strategy-icon {
-  font-size: 20px;
-  flex-shrink: 0;
-  line-height: 1;
-  width: 28px;
-  text-align: center;
-}
+.strategy-icon { font-size: 20px; flex-shrink: 0; width: 28px; text-align: center; line-height: 1; }
 
-.strategy-text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  flex: 1;
-  min-width: 0;
-}
+.strategy-text { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.strategy-label    { font-size: 13px; font-weight: 600; color: var(--text-primary); line-height: 1.3; }
+.strategy-sublabel { font-size: 11px; color: var(--text-secondary); line-height: 1.4; }
 
-.strategy-label {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-primary);
-  line-height: 1.3;
-}
-
-.strategy-sublabel {
-  font-size: 11px;
-  color: var(--text-secondary);
-  line-height: 1.4;
-}
-
-/* Cancel button below the strategy list */
-.strategy-cancel {
-  width: 100%;
-  justify-content: center;
-}
+.strategy-cancel { width: 100%; justify-content: center; }
 
 /* ===== TOAST ===== */
 .toast-container {
