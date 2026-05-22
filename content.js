@@ -20,18 +20,12 @@ function getCurrentUrl() {
 // Goal: produce the SHORTEST selector that matches EXACTLY ONE element in the
 //       current document — the element the user clicked.
 //
-// The only guarantee we can make is structural position in the DOM tree.
-// IDs and classes are treated as optional shortcuts: we try them but always
-// verify with querySelectorAll before accepting. If they do not uniquely
-// resolve to the target we fall back to the pure positional path.
-//
-// The positional path (Strategy 4) is the ultimate fallback and is always
-// unique because :nth-child(n) fully disambiguates siblings at every level.
+// Strategy cascade (each candidate verified with matchesOnly before use):
+//   1. Own id — if genuinely unique in the document
+//   2. Path anchored at a unique ancestor id + positional segments below it
+//   3. Full positional path from body using :nth-child (always unique)
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Return true iff `selector` resolves to exactly `element` in the document.
- */
 function matchesOnly(selector, element) {
   try {
     const hits = document.querySelectorAll(selector);
@@ -41,11 +35,6 @@ function matchesOnly(selector, element) {
   }
 }
 
-/**
- * Return the 1-based :nth-child index of `el` among ALL siblings
- * (not same-tag siblings). This is more stable than :nth-of-type
- * when mixed-tag siblings are present.
- */
 function nthChildIndex(el) {
   let index = 1;
   let sib = el.previousElementSibling;
@@ -53,103 +42,58 @@ function nthChildIndex(el) {
   return index;
 }
 
-/**
- * Build one path segment for `el`.
- * Format: tag:nth-child(n)
- * We always include :nth-child so the segment is unambiguous within its parent.
- */
 function segment(el) {
   return `${el.tagName.toLowerCase()}:nth-child(${nthChildIndex(el)})`;
 }
 
-/**
- * Build the guaranteed-unique full positional path from <body> to `element`.
- * Example: body > div:nth-child(3) > main:nth-child(1) > p:nth-child(2)
- *
- * This NEVER relies on id or class — it is purely structural and is always
- * unique by definition.
- */
 function buildPositionalPath(element) {
   const parts = [];
   let current = element;
-
   while (current && current !== document.body && current !== document.documentElement) {
     parts.unshift(segment(current));
     current = current.parentElement;
   }
-
   return parts.length === 0 ? "body" : "body > " + parts.join(" > ");
 }
 
-/**
- * Try to build a SHORTER path by anchoring at the nearest ancestor
- * (or the element itself) whose id resolves uniquely to that ancestor.
- *
- * Then append positional segments from that anchor down to `element`.
- * Verify the complete selector is unique before returning it.
- *
- * Returns null if no unique-id anchor can be found or if the resulting
- * selector is not actually unique (duplicate ids, etc.).
- */
 function buildAnchoredPath(element) {
   const descendantParts = [];
   let current = element;
 
   while (current && current !== document.body && current !== document.documentElement) {
-    // Does this node have an id, and is that id unique for THIS node?
     if (current.id) {
       const anchorSel = "#" + CSS.escape(current.id);
-
-      // Verify the anchor itself resolves to exactly this node
       try {
         const anchorHits = document.querySelectorAll(anchorSel);
         if (anchorHits.length === 1 && anchorHits[0] === current) {
-          // Anchor is genuinely unique — build the full candidate
           const candidate = descendantParts.length === 0
             ? anchorSel
             : anchorSel + " > " + descendantParts.join(" > ");
-
-          // Final uniqueness check for the whole selector
           if (matchesOnly(candidate, element)) return candidate;
-
-          // Anchor is unique but the combined selector somehow isn't —
-          // stop walking (nothing above will help)
-          return null;
+          return null; // anchor unique but full path isn't — positional fallback
         }
-        // id is duplicated — do NOT use it as an anchor, keep walking up
-      } catch {
-        // CSS.escape or querySelectorAll failed — skip
-      }
+        // duplicate id — keep walking up
+      } catch { /* skip */ }
     }
-
     descendantParts.unshift(segment(current));
     current = current.parentElement;
   }
-
-  return null; // no unique-id anchor found in the entire ancestry
+  return null;
 }
 
-/**
- * Main entry point — returns the shortest selector that uniquely identifies
- * `element` in the current document.
- */
 function generateSelectorPath(element) {
   if (!element || element === document.body || element === document.documentElement) {
     return "body";
   }
 
-  // ── Shortcut 1: element's own id, if genuinely unique ──
   if (element.id) {
     const sel = "#" + CSS.escape(element.id);
     if (matchesOnly(sel, element)) return sel;
-    // id exists but is duplicated → fall through
   }
 
-  // ── Shortcut 2: path anchored at a unique ancestor id ──
   const anchored = buildAnchoredPath(element);
   if (anchored) return anchored;
 
-  // ── Fallback: guaranteed-unique full positional path ──
   return buildPositionalPath(element);
 }
 
@@ -225,6 +169,10 @@ function removeRTLFromElement(element) {
   element.removeAttribute("data-rtl-applied");
 }
 
+/**
+ * Apply all enabled selectors for the current page.
+ * Returns the number of elements actually styled this call.
+ */
 async function applyAllEnabledSelectors() {
   const url = getCurrentUrl();
   const pageData = await getPageData(url);
@@ -243,6 +191,23 @@ async function applyAllEnabledSelectors() {
     } catch (e) { /* invalid selector — skip */ }
   }
   return applied;
+}
+
+/**
+ * Count how many saved enabled selectors currently have at least one
+ * matching element in the DOM.
+ */
+async function countSelectorsInDom() {
+  const url = getCurrentUrl();
+  const pageData = await getPageData(url);
+  if (!pageData) return 0;
+
+  let found = 0;
+  for (const sel of pageData.selectors) {
+    try { if (document.querySelectorAll(sel.path).length > 0) found++; }
+    catch (e) { /* skip */ }
+  }
+  return found;
 }
 
 // ===== MUTATION OBSERVER (debounced) =====
@@ -269,7 +234,28 @@ function isExtensionElement(el) {
   return !!el?.closest?.("#rtl-notification");
 }
 
-// ===== PAGE LOAD STATS NOTIFICATION =====
+// ─────────────────────────────────────────────────────────────────────────────
+// PAGE LOAD STATS NOTIFICATION
+//
+// Problem: on pages with dynamic content the DOM is empty at document_end.
+// Running querySelectorAll immediately gives 0 hits even for valid selectors,
+// producing a false "selectors may be outdated" warning.
+//
+// Solution:
+//   1. Show the stats notification immediately WITHOUT any "outdated" warning.
+//   2. In parallel, poll for up to MAX_WAIT_MS to see whether the enabled
+//      selectors eventually find elements in the DOM.
+//   3. Only after MAX_WAIT_MS, if STILL nothing is found, update the existing
+//      notification to show the "outdated" warning.
+//   4. If elements ARE found before the timeout, update the notification with
+//      the correct inDom count and no warning.
+//
+// The MutationObserver already handles applying RTL to late-appearing elements,
+// so the stats display is purely informational and safe to update lazily.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const STATS_POLL_INTERVAL_MS = 300;  // how often to recheck during the wait
+const STATS_MAX_WAIT_MS = 8000; // give up after 8 s (covers slow SPAs)
 
 async function showPageLoadStats() {
   const url = getCurrentUrl();
@@ -280,30 +266,93 @@ async function showPageLoadStats() {
   const enabled = pageData.selectors.filter(s => s.enabled).length;
   const disabled = total - enabled;
 
-  let inDom = 0;
-  for (const sel of pageData.selectors) {
-    try { if (document.querySelectorAll(sel.path).length > 0) inDom++; }
-    catch (e) { /* skip invalid */ }
-  }
-
+  // ── Page disabled: show warning immediately, no polling needed ──
   if (!pageData.pageEnabled) {
     showPersistentNotification(
-      `PAGE DISABLED — ${total} saved | ${enabled} enabled | ${disabled} disabled | ${inDom} in DOM`,
+      `PAGE DISABLED — ${total} saved | ${enabled} enabled | ${disabled} disabled`,
       "No selectors applied. Re-enable this page from the Options dashboard.",
       true
     );
     return;
   }
 
-  const staleWarning = (inDom === 0 && enabled > 0)
-    ? "⚠️ No matching elements found — selectors may be outdated. Edit them in Options."
-    : null;
+  // ── Page enabled: show initial stats without an "outdated" warning ──
+  // We use a placeholder inDom count from a quick synchronous check first.
+  const initialInDom = await countSelectorsInDom();
 
   showPersistentNotification(
-    `RTL Stats: ${total} saved | ${enabled} active | ${disabled} disabled | ${inDom} found in DOM`,
-    staleWarning,
-    !!staleWarning
+    buildStatsTitle(total, enabled, disabled, initialInDom),
+    null,   // no warning yet — we don't know if content is still loading
+    false
   );
+
+  // If content is already in the DOM, nothing more to do.
+  if (initialInDom > 0 || enabled === 0) return;
+
+  // ── Dynamic page: poll until elements appear or timeout expires ──
+  const started = Date.now();
+
+  const poll = setInterval(async () => {
+    const inDom = await countSelectorsInDom();
+
+    if (inDom > 0) {
+      // Elements found — update notification with correct count, no warning
+      clearInterval(poll);
+      updateStatsNotification(
+        buildStatsTitle(total, enabled, disabled, inDom),
+        null,
+        false
+      );
+      return;
+    }
+
+    if (Date.now() - started >= STATS_MAX_WAIT_MS) {
+      // Timeout reached and still nothing — NOW show the outdated warning
+      clearInterval(poll);
+      updateStatsNotification(
+        buildStatsTitle(total, enabled, disabled, 0),
+        "⚠️ No matching elements found — selectors may be outdated. Edit them in Options.",
+        true
+      );
+    }
+    // else: keep polling silently
+  }, STATS_POLL_INTERVAL_MS);
+}
+
+function buildStatsTitle(total, enabled, disabled, inDom) {
+  return `RTL Stats: ${total} saved | ${enabled} active | ${disabled} disabled | ${inDom} found in DOM`;
+}
+
+/**
+ * Update the text of an already-visible persistent notification in-place,
+ * so there is no flicker from removing and re-adding it.
+ */
+function updateStatsNotification(title, subtitle, isWarning) {
+  const n = document.getElementById("rtl-notification");
+  if (!n) {
+    // Notification was closed by the user — do not re-open it
+    return;
+  }
+
+  // Update warning colour class
+  n.classList.toggle("rtl-warning", isWarning);
+
+  // Update title text
+  const titleEl = n.querySelector(".rtl-notification-title");
+  if (titleEl) titleEl.textContent = title;
+
+  // Add, update, or remove the subtitle line
+  let subEl = n.querySelector(".rtl-notification-subtitle");
+  if (subtitle) {
+    if (!subEl) {
+      subEl = document.createElement("div");
+      subEl.className = "rtl-notification-subtitle";
+      n.appendChild(subEl);
+    }
+    subEl.textContent = subtitle;
+  } else if (subEl) {
+    subEl.remove();
+  }
 }
 
 // ===== NOTIFICATIONS =====
@@ -401,7 +450,7 @@ async function toggleRTLOnElement(element) {
   const url = getCurrentUrl();
 
   if (element.hasAttribute("data-rtl-applied")) {
-    // ── Remove RTL ──
+    // ── Remove ──
     let pageData = await getPageData(url);
     if (pageData) {
       const matching = pageData.selectors.find(s => {
@@ -421,7 +470,7 @@ async function toggleRTLOnElement(element) {
     return "removed";
 
   } else {
-    // ── Apply RTL ──
+    // ── Apply ──
     const selectorPath = generateSelectorPath(element);
     let pageData = await getPageData(url);
 
@@ -466,12 +515,10 @@ async function handleContextMenuRTL() {
 
 // ===== EVENT LISTENERS =====
 
-// Ctrl + Double-click → toggle selection mode
 document.addEventListener("dblclick", (e) => {
   if (e.ctrlKey) { e.preventDefault(); toggleSelectionMode(); }
 });
 
-// Keyboard shortcuts
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && isSelectionModeActive) {
     e.preventDefault();
@@ -490,25 +537,20 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
-// Track right-clicked element
 document.addEventListener("contextmenu", (e) => {
   lastRightClickedElement = e.target;
 });
 
-// Click — selection mode
 document.addEventListener("click", async (e) => {
   if (!isSelectionModeActive) return;
   if (isExtensionElement(e.target)) return;
-
   e.preventDefault();
   e.stopPropagation();
-
   const result = await toggleRTLOnElement(e.target);
   if (result === "removed") showNotification("⬅️ RTL removed");
   if (result === "applied") showNotification("➡️ RTL applied & saved");
 }, true);
 
-// Hover highlight
 document.addEventListener("mouseover", (e) => {
   if (isExtensionElement(e.target)) return;
   currentlyHoveredElement = e.target;
@@ -529,7 +571,6 @@ document.addEventListener("mouseout", (e) => {
   }
 }, true);
 
-// Messages from background
 chrome.runtime.onMessage.addListener((message) => {
   if (message.type === "TOGGLE_SELECTION_MODE") toggleSelectionMode();
   if (message.type === "APPLY_RTL_CONTEXT_MENU") handleContextMenuRTL();
