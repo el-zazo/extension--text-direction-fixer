@@ -1,5 +1,5 @@
 // ============================================
-// Text Direction Fixer - Content Script v3.5
+// Text Direction Fixer - Content Script
 // ============================================
 
 // ===== STATE =====
@@ -14,59 +14,143 @@ function getCurrentUrl() {
   return window.location.origin + window.location.pathname;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// SELECTOR GENERATION
+//
+// Goal: produce the SHORTEST selector that matches EXACTLY ONE element in the
+//       current document — the element the user clicked.
+//
+// The only guarantee we can make is structural position in the DOM tree.
+// IDs and classes are treated as optional shortcuts: we try them but always
+// verify with querySelectorAll before accepting. If they do not uniquely
+// resolve to the target we fall back to the pure positional path.
+//
+// The positional path (Strategy 4) is the ultimate fallback and is always
+// unique because :nth-child(n) fully disambiguates siblings at every level.
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
- * Build a CSS selector path for the given element.
- * Prefers: ID > meaningful classes > nth-of-type fallback.
+ * Return true iff `selector` resolves to exactly `element` in the document.
+ */
+function matchesOnly(selector, element) {
+  try {
+    const hits = document.querySelectorAll(selector);
+    return hits.length === 1 && hits[0] === element;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Return the 1-based :nth-child index of `el` among ALL siblings
+ * (not same-tag siblings). This is more stable than :nth-of-type
+ * when mixed-tag siblings are present.
+ */
+function nthChildIndex(el) {
+  let index = 1;
+  let sib = el.previousElementSibling;
+  while (sib) { index++; sib = sib.previousElementSibling; }
+  return index;
+}
+
+/**
+ * Build one path segment for `el`.
+ * Format: tag:nth-child(n)
+ * We always include :nth-child so the segment is unambiguous within its parent.
+ */
+function segment(el) {
+  return `${el.tagName.toLowerCase()}:nth-child(${nthChildIndex(el)})`;
+}
+
+/**
+ * Build the guaranteed-unique full positional path from <body> to `element`.
+ * Example: body > div:nth-child(3) > main:nth-child(1) > p:nth-child(2)
+ *
+ * This NEVER relies on id or class — it is purely structural and is always
+ * unique by definition.
+ */
+function buildPositionalPath(element) {
+  const parts = [];
+  let current = element;
+
+  while (current && current !== document.body && current !== document.documentElement) {
+    parts.unshift(segment(current));
+    current = current.parentElement;
+  }
+
+  return parts.length === 0 ? "body" : "body > " + parts.join(" > ");
+}
+
+/**
+ * Try to build a SHORTER path by anchoring at the nearest ancestor
+ * (or the element itself) whose id resolves uniquely to that ancestor.
+ *
+ * Then append positional segments from that anchor down to `element`.
+ * Verify the complete selector is unique before returning it.
+ *
+ * Returns null if no unique-id anchor can be found or if the resulting
+ * selector is not actually unique (duplicate ids, etc.).
+ */
+function buildAnchoredPath(element) {
+  const descendantParts = [];
+  let current = element;
+
+  while (current && current !== document.body && current !== document.documentElement) {
+    // Does this node have an id, and is that id unique for THIS node?
+    if (current.id) {
+      const anchorSel = "#" + CSS.escape(current.id);
+
+      // Verify the anchor itself resolves to exactly this node
+      try {
+        const anchorHits = document.querySelectorAll(anchorSel);
+        if (anchorHits.length === 1 && anchorHits[0] === current) {
+          // Anchor is genuinely unique — build the full candidate
+          const candidate = descendantParts.length === 0
+            ? anchorSel
+            : anchorSel + " > " + descendantParts.join(" > ");
+
+          // Final uniqueness check for the whole selector
+          if (matchesOnly(candidate, element)) return candidate;
+
+          // Anchor is unique but the combined selector somehow isn't —
+          // stop walking (nothing above will help)
+          return null;
+        }
+        // id is duplicated — do NOT use it as an anchor, keep walking up
+      } catch {
+        // CSS.escape or querySelectorAll failed — skip
+      }
+    }
+
+    descendantParts.unshift(segment(current));
+    current = current.parentElement;
+  }
+
+  return null; // no unique-id anchor found in the entire ancestry
+}
+
+/**
+ * Main entry point — returns the shortest selector that uniquely identifies
+ * `element` in the current document.
  */
 function generateSelectorPath(element) {
   if (!element || element === document.body || element === document.documentElement) {
     return "body";
   }
 
-  // If element itself has a unique ID, return immediately
+  // ── Shortcut 1: element's own id, if genuinely unique ──
   if (element.id) {
-    return "#" + CSS.escape(element.id);
+    const sel = "#" + CSS.escape(element.id);
+    if (matchesOnly(sel, element)) return sel;
+    // id exists but is duplicated → fall through
   }
 
-  const parts = [];
-  let current = element;
+  // ── Shortcut 2: path anchored at a unique ancestor id ──
+  const anchored = buildAnchoredPath(element);
+  if (anchored) return anchored;
 
-  while (current && current !== document.body && current !== document.documentElement) {
-    let selector = current.tagName.toLowerCase();
-
-    if (current.id) {
-      selector = "#" + CSS.escape(current.id);
-      parts.unshift(selector);
-      break;
-    }
-
-    // Up to 2 stable classes (skip utility/dynamic patterns)
-    const stableClasses = Array.from(current.classList)
-      .filter(c => !c.match(/^(js-|is-|has-|ng-|v-|\d)/))
-      .slice(0, 2)
-      .map(c => "." + CSS.escape(c))
-      .join("");
-
-    if (stableClasses) {
-      selector += stableClasses;
-    } else {
-      // nth-of-type fallback
-      const parent = current.parentElement;
-      if (parent) {
-        const siblings = Array.from(parent.children).filter(
-          c => c.tagName === current.tagName
-        );
-        if (siblings.length > 1) {
-          selector += ":nth-of-type(" + (siblings.indexOf(current) + 1) + ")";
-        }
-      }
-    }
-
-    parts.unshift(selector);
-    current = current.parentElement;
-  }
-
-  return parts.join(" > ");
+  // ── Fallback: guaranteed-unique full positional path ──
+  return buildPositionalPath(element);
 }
 
 function getCurrentTimestamp() {
@@ -81,7 +165,6 @@ async function loadAllData() {
     if (!rtl_data) return [];
     if (Array.isArray(rtl_data)) return rtl_data;
     if (typeof rtl_data === "object") {
-      // One-time migration from old object format
       const migrated = Object.values(rtl_data);
       await chrome.storage.local.set({ rtl_data: migrated });
       console.info("[RTL] Storage migrated from object to array format");
@@ -106,27 +189,22 @@ async function getPageData(url) {
 async function savePageData(pageData) {
   const data = await loadAllData();
   const index = data.findIndex(p => p.url === pageData.url);
-  if (index >= 0) {
-    data[index] = pageData;
-  } else {
-    data.push(pageData);
-  }
+  if (index >= 0) data[index] = pageData;
+  else data.push(pageData);
   await saveAllData(data);
 }
 
 // ===== BADGE =====
 
 function updateBadge(count) {
-  try {
-    chrome.runtime.sendMessage({ type: "UPDATE_BADGE", count });
-  } catch (e) { /* extension context invalidated */ }
+  try { chrome.runtime.sendMessage({ type: "UPDATE_BADGE", count }); }
+  catch (e) { /* context invalidated after page reload */ }
 }
 
 async function updateBadgeFromStorage() {
   const url = getCurrentUrl();
   const pageData = await getPageData(url);
-  const count = pageData ? pageData.selectors.filter(s => s.enabled).length : 0;
-  updateBadge(count);
+  updateBadge(pageData ? pageData.selectors.filter(s => s.enabled).length : 0);
 }
 
 // ===== RTL APPLICATION =====
@@ -173,14 +251,10 @@ let observer = null;
 
 function startObserver() {
   if (observer) observer.disconnect();
-
   observer = new MutationObserver(() => {
     clearTimeout(observerDebounceTimer);
-    observerDebounceTimer = setTimeout(() => {
-      applyAllEnabledSelectors();
-    }, 150);
+    observerDebounceTimer = setTimeout(() => applyAllEnabledSelectors(), 150);
   });
-
   observer.observe(document.body, { childList: true, subtree: true });
 }
 
@@ -189,13 +263,13 @@ function stopObserver() {
   clearTimeout(observerDebounceTimer);
 }
 
-// ===== GUARD: is this our own UI element? =====
+// ===== GUARD: skip our own UI elements =====
 
 function isExtensionElement(el) {
   return !!el?.closest?.("#rtl-notification");
 }
 
-// ===== STATS NOTIFICATION =====
+// ===== PAGE LOAD STATS NOTIFICATION =====
 
 async function showPageLoadStats() {
   const url = getCurrentUrl();
@@ -208,9 +282,8 @@ async function showPageLoadStats() {
 
   let inDom = 0;
   for (const sel of pageData.selectors) {
-    try {
-      if (document.querySelectorAll(sel.path).length > 0) inDom++;
-    } catch (e) { /* skip */ }
+    try { if (document.querySelectorAll(sel.path).length > 0) inDom++; }
+    catch (e) { /* skip invalid */ }
   }
 
   if (!pageData.pageEnabled) {
@@ -222,18 +295,14 @@ async function showPageLoadStats() {
     return;
   }
 
-  let subtitle = null;
-  let isWarning = false;
-
-  if (inDom === 0 && enabled > 0) {
-    subtitle = "⚠️ No matching elements found — selectors may be outdated. Edit them in Options.";
-    isWarning = true;
-  }
+  const staleWarning = (inDom === 0 && enabled > 0)
+    ? "⚠️ No matching elements found — selectors may be outdated. Edit them in Options."
+    : null;
 
   showPersistentNotification(
     `RTL Stats: ${total} saved | ${enabled} active | ${disabled} disabled | ${inDom} found in DOM`,
-    subtitle,
-    isWarning
+    staleWarning,
+    !!staleWarning
   );
 }
 
@@ -294,7 +363,6 @@ function showPersistentNotification(title, subtitle, isWarning) {
 
 function toggleSelectionMode() {
   isSelectionModeActive = !isSelectionModeActive;
-
   if (isSelectionModeActive) {
     document.body.style.cursor = "crosshair";
     showNotification("✅ RTL Mode ON — Click elements (ESC to exit)");
@@ -309,34 +377,31 @@ function toggleSelectionMode() {
   }
 }
 
-// ===== SOFT-DISABLE ALL FOR PAGE =====
+// ===== DISABLE ALL FOR PAGE =====
 
 async function disableAllForCurrentPage() {
   const url = getCurrentUrl();
   const pageData = await getPageData(url);
-
   if (!pageData || pageData.selectors.length === 0) {
     showNotification("ℹ️ No RTL selectors to disable");
     return;
   }
-
   pageData.selectors.forEach(s => { s.enabled = false; });
   await savePageData(pageData);
-
   document.querySelectorAll("[data-rtl-applied]").forEach(el => removeRTLFromElement(el));
   await updateBadgeFromStorage();
   showNotification("🔄 All RTL selectors disabled for this page");
 }
 
-// ===== CONTEXT MENU =====
+// ===== TOGGLE RTL ON A SINGLE ELEMENT =====
 
-async function handleContextMenuRTL() {
-  const element = lastRightClickedElement;
-  if (!element || isExtensionElement(element)) return;
+async function toggleRTLOnElement(element) {
+  if (!element || isExtensionElement(element)) return null;
 
   const url = getCurrentUrl();
 
   if (element.hasAttribute("data-rtl-applied")) {
+    // ── Remove RTL ──
     let pageData = await getPageData(url);
     if (pageData) {
       const matching = pageData.selectors.find(s => {
@@ -350,29 +415,53 @@ async function handleContextMenuRTL() {
         } catch (e) { /* skip */ }
       }
     }
+    element.style.removeProperty("outline");
+    element.style.removeProperty("outline-offset");
     await updateBadgeFromStorage();
-    showNotification("⬅️ RTL removed via context menu");
+    return "removed";
+
   } else {
+    // ── Apply RTL ──
     const selectorPath = generateSelectorPath(element);
     let pageData = await getPageData(url);
 
     if (!pageData) {
-      pageData = { url, pageEnabled: true, createdAt: getCurrentTimestamp(), selectors: [] };
+      pageData = {
+        url,
+        pageEnabled: true,
+        createdAt: getCurrentTimestamp(),
+        selectors: []
+      };
     }
 
     let selector = pageData.selectors.find(s => s.path === selectorPath);
     if (selector) {
       selector.enabled = true;
     } else {
-      selector = { id: crypto.randomUUID(), path: selectorPath, enabled: true, createdAt: getCurrentTimestamp() };
+      selector = {
+        id: crypto.randomUUID(),
+        path: selectorPath,
+        enabled: true,
+        createdAt: getCurrentTimestamp()
+      };
       pageData.selectors.push(selector);
     }
 
     await savePageData(pageData);
     applyRTLToElement(element);
     await updateBadgeFromStorage();
-    showNotification("➡️ RTL applied via context menu");
+    return "applied";
   }
+}
+
+// ===== CONTEXT MENU HANDLER =====
+
+async function handleContextMenuRTL() {
+  const element = lastRightClickedElement;
+  if (!element || isExtensionElement(element)) return;
+  const result = await toggleRTLOnElement(element);
+  if (result === "removed") showNotification("⬅️ RTL removed via context menu");
+  if (result === "applied") showNotification("➡️ RTL applied via context menu");
 }
 
 // ===== EVENT LISTENERS =====
@@ -395,7 +484,6 @@ document.addEventListener("keydown", (e) => {
     currentlyHoveredElement = null;
     showNotification("❌ RTL Mode OFF (ESC)");
   }
-
   if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "r") {
     e.preventDefault();
     disableAllForCurrentPage();
@@ -410,56 +498,17 @@ document.addEventListener("contextmenu", (e) => {
 // Click — selection mode
 document.addEventListener("click", async (e) => {
   if (!isSelectionModeActive) return;
-  if (isExtensionElement(e.target)) return; // guard our own UI
+  if (isExtensionElement(e.target)) return;
 
   e.preventDefault();
   e.stopPropagation();
 
-  const element = e.target;
-  const url = getCurrentUrl();
-
-  if (element.hasAttribute("data-rtl-applied")) {
-    let pageData = await getPageData(url);
-    if (pageData) {
-      const matching = pageData.selectors.find(s => {
-        try { return element.matches(s.path); } catch { return false; }
-      });
-      if (matching) {
-        matching.enabled = false;
-        await savePageData(pageData);
-        try {
-          document.querySelectorAll(matching.path).forEach(el => removeRTLFromElement(el));
-        } catch (err) { /* skip */ }
-      }
-    }
-    element.style.removeProperty("outline");
-    element.style.removeProperty("outline-offset");
-    await updateBadgeFromStorage();
-    showNotification("⬅️ RTL removed");
-  } else {
-    const selectorPath = generateSelectorPath(element);
-    let pageData = await getPageData(url);
-
-    if (!pageData) {
-      pageData = { url, pageEnabled: true, createdAt: getCurrentTimestamp(), selectors: [] };
-    }
-
-    let selector = pageData.selectors.find(s => s.path === selectorPath);
-    if (selector) {
-      selector.enabled = true;
-    } else {
-      selector = { id: crypto.randomUUID(), path: selectorPath, enabled: true, createdAt: getCurrentTimestamp() };
-      pageData.selectors.push(selector);
-    }
-
-    await savePageData(pageData);
-    applyRTLToElement(element);
-    await updateBadgeFromStorage();
-    showNotification("➡️ RTL applied & saved");
-  }
+  const result = await toggleRTLOnElement(e.target);
+  if (result === "removed") showNotification("⬅️ RTL removed");
+  if (result === "applied") showNotification("➡️ RTL applied & saved");
 }, true);
 
-// Hover — selection mode
+// Hover highlight
 document.addEventListener("mouseover", (e) => {
   if (isExtensionElement(e.target)) return;
   currentlyHoveredElement = e.target;

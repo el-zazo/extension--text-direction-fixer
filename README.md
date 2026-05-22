@@ -2,7 +2,6 @@
 
 > Toggle RTL (Right-to-Left) direction on any web element. Right-click for context menu, or use the interactive selection mode. Manage all your saved selectors from the Options dashboard.
 
-**Version:** 3.5
 **Manifest Version:** 3
 
 ---

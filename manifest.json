@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Text Direction Fixer",
-  "version": "3.5",
+  "version": "4.0",
   "description": "Toggle RTL direction on web elements. Right-click for context menu. Manage selectors in Options.",
   "permissions": ["activeTab", "storage", "contextMenus"],
   "background": {
